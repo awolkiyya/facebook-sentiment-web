@@ -1,0 +1,109 @@
+{
+  "system": {
+    "title": "Mayor Social Analytics",
+    "full_title": "Mayor Facebook Social Analytics and AI Intelligence Platform"
+  },
+
+  "landing": {
+    "banner": {
+      "message": "This is a new digital service and still being built. Some features are in beta.",
+      "feedback": "Share feedback"
+    },
+
+    "navbar": {
+      "logo": "Galii Mana Qopheessaa",
+      "services": "Services",
+      "about": "About",
+      "contact": "Contact",
+      "sign_in": "Sign In",
+      "citizen_portal": "Citizen Portal",
+      "office_system": "Office System"
+    },
+
+    "hero": {
+      "badge": "Now serving Adama citizens online",
+      "title": "Mosajii Tejajila GMQ",
+      "description": "Access public services, manage payments, and handle government operations in one secure system.",
+      "citizen_button": "Citizen Portal",
+      "office_button": "Office System"
+    },
+
+    "features": {
+      "title": "Available Services",
+      "description": "Services are being introduced gradually based on readiness.",
+
+      "citizen": {
+        "title": "Citizen Services",
+        "description": "Pay taxes, view bills, and track payments in real time."
+      },
+
+      "revenue": {
+        "title": "Revenue Management",
+        "description": "Manage taxes, fees, penalties, and government revenue operations."
+      },
+
+      "sector": {
+        "title": "Sector Operations",
+        "description": "Land, construction, and inspection workflows integrated."
+      },
+
+      "soon": "Rolling out to more sectors soon"
+    },
+
+    "about": {
+      "title": "Modern Digital Government System",
+      "description": "This platform connects citizens and government offices in one unified system with secure authentication, billing, and payment integration."
+    },
+
+    "footer": {
+      "copyright": "Adama GovService Portal. All rights reserved.",
+      "report_issue": "Report an issue or suggest a feature"
+    }
+  },
+
+
+  "auth": {
+    "welcome": "Welcome Back",
+
+    "fields": {
+      "email": "Email Address",
+      "password": "Password"
+    },
+
+    "actions": {
+      "login": "Login Securely",
+      "logging_in": "Logging in..."
+    }
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+  
+    "facebook": "Facebook",
+    "facebook_pages": "Pages",
+    "facebook_posts": "Posts",
+    "facebook_comments": "Comments",
+    "facebook_reactions": "Reactions",
+    "facebook_insights": "Page Insights",
+    "facebook_connections": "Connections",
+    "facebook_sync_runs": "Sync Runs",
+  
+    "ai_analytics": "AI Analytics",
+    "ai_sentiment": "Sentiment Analysis",
+    "ai_topics": "Topics",
+    "ai_insights": "AI Insights",
+    "ai_settings": "AI Settings",
+  
+    "reports": "Reports",
+  
+    "announcements": "Announcements",
+  
+    "administration": "Administration",
+    "users": "Users",
+    "roles": "Roles",
+    "permissions": "Permissions",
+  
+    "system_settings": "System Settings",
+    "system_logs": "System Logs",
+    "notifications": "Manage Notifications"
+  }
+}

@@ -1,0 +1,173 @@
+{
+  
+  "system": {
+    "title": "የከንቲባ ማህበራዊ ትንታኔ",
+    "full_title": "የከንቲባ የፌስቡክ ማህበራዊ ትንታኔ እና የAI የመረጃ ግንዛቤ መድረክ"
+  },
+
+
+  "landing": {
+
+    "banner": {
+      "message": "ይህ አዲስ የዲጂታል አገልግሎት ነው። አንዳንድ አገልግሎቶች አሁንም በሙከራ ደረጃ ላይ ናቸው።",
+      "feedback": "አስተያየት ይስጡ"
+    },
+
+
+    "navbar": {
+
+      "logo": "ገቢ ማኔጅመንት",
+
+      "services": "አገልግሎቶች",
+
+      "about": "ስለ እኛ",
+
+      "contact": "ያግኙን",
+
+      "sign_in": "ግባ",
+
+      "citizen_portal": "የዜጋ ፖርታል",
+
+      "office_system": "የቢሮ ስርዓት"
+
+    },
+
+
+    "hero": {
+
+      "badge": "አሁን የአዳማ ነዋሪዎችን በመስመር ላይ እያገለገለ ነው",
+
+      "title": "GMQ የአገልግሎት መድረክ",
+
+      "description":
+      "የመንግስት አገልግሎቶችን ያግኙ፣ ክፍያዎችን ያስተዳድሩ፣ እና የቢሮ ስራዎችን በአንድ ደህንነቱ በተጠበቀ ስርዓት ያከናውኑ።",
+
+      "citizen_button": "የዜጋ ፖርታል",
+
+      "office_button": "የቢሮ ስርዓት"
+
+    },
+
+
+    "features": {
+
+      "title": "የሚገኙ አገልግሎቶች",
+
+      "description":
+      "አገልግሎቶች በዝግጅት ደረጃቸው መሰረት በቀስታ እየተጨመሩ ነው።",
+
+
+      "citizen": {
+
+        "title": "የዜጎች አገልግሎት",
+
+        "description":
+        "ግብር ይክፈሉ፣ የክፍያ መረጃ ይመልከቱ፣ ክፍያዎችን ይከታተሉ።"
+
+      },
+
+
+      "revenue": {
+
+        "title": "የገቢ አስተዳደር",
+
+        "description":
+        "ግብር፣ ክፍያ፣ ቅጣት እና የመንግስት ገቢ ስራዎችን ያስተዳድሩ።"
+
+      },
+
+
+      "sector": {
+
+        "title": "የዘርፍ አሰራር",
+
+        "description":
+        "የመሬት፣ የግንባታ እና የምርመራ ስራዎችን ያጣምራል።"
+
+      },
+
+
+      "soon":
+      "በቅርቡ ተጨማሪ ዘርፎች ይካተታሉ"
+
+    },
+
+
+    "about": {
+
+      "title":
+      "ዘመናዊ የዲጂታል መንግስት ስርዓት",
+
+      "description":
+      "ይህ መድረክ ዜጎችንና የመንግስት ቢሮዎችን በአንድ ደህንነቱ በተጠበቀ ስርዓት ያገናኛል።"
+
+    },
+
+
+    "footer": {
+
+      "copyright":
+      "የአዳማ የመንግስት አገልግሎት ፖርታል። መብቶች በሙሉ የተጠበቁ ናቸው።",
+
+      "report_issue":
+      "ችግር ያሳውቁ ወይም ሀሳብ ያቅርቡ"
+
+    }
+
+  },
+
+
+  "auth": {
+
+    "welcome": "እንኳን ደህና መጡ",
+
+    "fields": {
+
+      "email": "ኢሜይል አድራሻ",
+
+      "password": "የይለፍ ቃል"
+
+    },
+
+
+    "actions": {
+
+      "login": "በደህንነት ግባ",
+
+      "logging_in": "በመግባት ላይ..."
+
+    }
+
+  },
+
+  "navigation": {
+    "dashboard": "ዳሽቦርድ",
+  
+    "facebook": "ፌስቡክ",
+    "facebook_pages": "ገጾች",
+    "facebook_posts": "ልጥፎች",
+    "facebook_comments": "አስተያየቶች",
+    "facebook_reactions": "ምላሾች",
+    "facebook_insights": "የገጽ ግንዛቤዎች",
+    "facebook_connections": "ግንኙነቶች",
+    "facebook_sync_runs": "የማመሳሰል ሂደቶች",
+  
+    "ai_analytics": "AI ትንታኔ",
+    "ai_sentiment": "የስሜት ትንተና",
+    "ai_topics": "ርዕሶች",
+    "ai_insights": "AI ግንዛቤዎች",
+    "ai_settings": "AI ቅንብሮች",
+  
+    "reports": "ሪፖርቶች",
+  
+    "announcements": "ማስታወቂያዎች",
+  
+    "administration": "አስተዳደር",
+    "users": "ተጠቃሚዎች",
+    "roles": "ሚናዎች",
+    "permissions": "ፈቃዶች",
+  
+    "system_settings": "የስርዓት ቅንብሮች",
+    "system_logs": "የስርዓት ሎጎች"
+  }
+}

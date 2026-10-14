@@ -1,0 +1,292 @@
+"use client"
+
+import {
+  ArrowDown,
+  ArrowUp,
+  Minus,
+} from "lucide-react"
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart"
+
+import {
+  Pie,
+  PieChart,
+} from "recharts"
+
+import type {
+  ExecutiveSummaryData,
+} from "@/types/facebook-post"
+
+// =========================================================
+// TYPES
+// =========================================================
+
+interface ExecutiveSummaryProps {
+  data: ExecutiveSummaryData
+  responseTopic?: string
+}
+
+// =========================================================
+// CHART CONFIG
+// =========================================================
+
+const chartConfig = {
+  positive: {
+    label: "Positive",
+    color: "var(--chart-2)",
+  },
+  neutral: {
+    label: "Neutral",
+    color: "var(--chart-3)",
+  },
+  negative: {
+    label: "Negative",
+    color: "var(--chart-1)",
+  },
+}
+
+// =========================================================
+// COMPONENT
+// =========================================================
+
+export function ExecutiveSummary({
+  data,
+  responseTopic = "Water service",
+}: ExecutiveSummaryProps) {
+  // -------------------------------------------------------
+  // TOTAL POSTS
+  // -------------------------------------------------------
+
+  const total =
+    data.positivePosts +
+    data.neutralPosts +
+    data.negativePosts
+
+  // -------------------------------------------------------
+  // PIE CHART DATA
+  //
+  // Use actual post counts as the Pie value.
+  // The percentage is kept for the tooltip.
+  // -------------------------------------------------------
+
+  const chartData = [
+    {
+      sentiment: "positive",
+      value: data.positivePosts,
+      percentage: data.positivePercentage,
+      fill: "var(--color-positive)",
+    },
+    {
+      sentiment: "neutral",
+      value: data.neutralPosts,
+      percentage: data.neutralPercentage,
+      fill: "var(--color-neutral)",
+    },
+    {
+      sentiment: "negative",
+      value: data.negativePosts,
+      percentage: data.negativePercentage,
+      fill: "var(--color-negative)",
+    },
+  ]
+
+  // -------------------------------------------------------
+  // SAFE POSITIVE PERCENTAGE
+  // -------------------------------------------------------
+
+  const positivePercentage =
+    total > 0
+      ? data.positivePercentage
+      : 0
+
+  return (
+    <Card className=" shadow-none">
+      {/* ===================================================
+          HEADER
+      =================================================== */}
+
+      <CardHeader className="flex-row items-center justify-between gap-2 px-3 pb-2 pt-3">
+        <CardTitle className="flex items-center gap-2 text-xs font-semibold">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border bg-muted/40">
+            <ArrowUp className="h-3.5 w-3.5 text-emerald-600" />
+          </span>
+
+          Executive Summary
+        </CardTitle>
+
+        <span className="shrink-0 text-[10px] text-muted-foreground">
+          {total} posts
+        </span>
+      </CardHeader>
+
+      <CardContent className="space-y-3 px-3 pb-3">
+        {/* =================================================
+            DONUT + INTERPRETATION
+        ================================================= */}
+
+        <div className="flex items-center gap-3">
+          {/* -------------------------------------------------
+              DONUT
+          ------------------------------------------------- */}
+
+          <div className="relative h-[96px] w-[96px] shrink-0">
+            <ChartContainer
+              config={chartConfig}
+              className="h-full w-full"
+            >
+              <PieChart>
+                <ChartTooltip
+                  cursor={false}
+                  content={
+                    <ChartTooltipContent
+                      hideLabel
+                      formatter={(
+                        value,
+                        name,
+                        item,
+                      ) => {
+                        const sentiment =
+                          String(name)
+
+                        const percentage =
+                          Number(
+                            item?.payload
+                              ?.percentage ?? 0,
+                          )
+
+                        const label =
+                          chartConfig[
+                            sentiment as keyof typeof chartConfig
+                          ]?.label ??
+                          sentiment
+
+                        return [
+                          `${Number(value)} posts (${percentage.toFixed(0)}%)`,
+                          label,
+                        ]
+                      }}
+                    />
+                  }
+                />
+
+                <Pie
+                  data={chartData}
+                  dataKey="value"
+                  nameKey="sentiment"
+                  innerRadius="62%"
+                  outerRadius="88%"
+                  paddingAngle={3}
+                  cornerRadius={4}
+                  stroke="var(--background)"
+                  strokeWidth={2}
+                />
+              </PieChart>
+            </ChartContainer>
+
+            {/* -------------------------------------------------
+                CENTER VALUE
+            ------------------------------------------------- */}
+
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-lg font-bold leading-none tracking-tight tabular-nums">
+                {positivePercentage.toFixed(0)}%
+              </span>
+
+              <span className="mt-1 text-[9px] font-medium text-muted-foreground">
+                positive
+              </span>
+            </div>
+          </div>
+
+          {/* -------------------------------------------------
+              INTERPRETATION
+          ------------------------------------------------- */}
+
+          <div className="min-w-0 flex-1">
+            <p className="text-xs leading-[1.55] text-muted-foreground">
+              <span className="font-semibold text-foreground">
+                {positivePercentage.toFixed(0)}%
+              </span>{" "}
+              of reviewed posts are positive.{" "}
+              <span className="font-semibold text-foreground">
+                {responseTopic}
+              </span>{" "}
+              is the topic most likely to need a response.
+            </p>
+          </div>
+        </div>
+
+        {/* =================================================
+            SENTIMENT BREAKDOWN
+        ================================================= */}
+
+        <div className="grid grid-cols-3 overflow-hidden rounded-md border bg-muted/10">
+          {/* -------------------------------------------------
+              POSITIVE
+          ------------------------------------------------- */}
+
+          <div className="flex min-w-0 flex-col items-center justify-center gap-0.5 border-r px-2 py-2">
+            <div className="flex items-center gap-1">
+              <ArrowUp className="h-3 w-3 shrink-0 text-emerald-600" />
+
+              <span className="text-sm font-semibold tabular-nums">
+                {data.positivePosts}
+              </span>
+            </div>
+
+            <span className="text-[10px] text-muted-foreground">
+              positive
+            </span>
+          </div>
+
+          {/* -------------------------------------------------
+              NEUTRAL
+          ------------------------------------------------- */}
+
+          <div className="flex min-w-0 flex-col items-center justify-center gap-0.5 border-r px-2 py-2">
+            <div className="flex items-center gap-1">
+              <Minus className="h-3 w-3 shrink-0 text-slate-500" />
+
+              <span className="text-sm font-semibold tabular-nums">
+                {data.neutralPosts}
+              </span>
+            </div>
+
+            <span className="text-[10px] text-muted-foreground">
+              neutral
+            </span>
+          </div>
+
+          {/* -------------------------------------------------
+              NEGATIVE
+          ------------------------------------------------- */}
+
+          <div className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-2 py-2">
+            <div className="flex items-center gap-1">
+              <ArrowDown className="h-3 w-3 shrink-0 text-red-600" />
+
+              <span className="text-sm font-semibold tabular-nums">
+                {data.negativePosts}
+              </span>
+            </div>
+
+            <span className="text-[10px] text-muted-foreground">
+              negative
+            </span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}

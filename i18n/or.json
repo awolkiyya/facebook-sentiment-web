@@ -1,0 +1,143 @@
+{
+  "system": {
+    "title": "Xiinxala Hawaasaa Kan Kantiibaa",
+    "full_title": "Waltajjii Xiinxala Hawaasaa Facebook fi Hubannoo AI Kan Kantiibaa"
+  },
+
+
+  "landing": {
+
+    "banner": {
+      "message": "Tajaajilli dijitaalaa kun ijaaramaa jira. Tajaajiloonni muraasni yeroo ammaa qorannoo keessa jiru.",
+      "feedback": "Yaada kenni"
+    },
+
+
+    "navbar": {
+
+      "logo": "Galii Mana Qopheessaa",
+      "services": "Tajaajiloota",
+      "about": "Waa'ee Keenya",
+      "contact": "Nu Quunnamaa",
+
+      "sign_in": "Seeni",
+
+      "citizen_portal": "Kutaalee Lammii",
+      "office_system": "Sirna Waajjiraa"
+
+    },
+
+
+    "hero": {
+
+      "badge": "Amma jiraattota Adaamaa tajaajilaa jira",
+
+      "title": "Mosajii Tejajila GMQ",
+
+      "description":
+      "Tajaajiloota mootummaa argadhu, kaffaltii bulchi, hojii waajjiraa sirna nageenya qabu keessatti raawwadhu.",
+
+      "citizen_button": "Portal Lammii",
+
+      "office_button": "Sirna Waajjiraa"
+
+    },
+
+
+    "features": {
+
+      "title": "Tajaajiloota Jiraatan",
+
+      "description":
+      "Tajaajiloonni haala qophii isaanii irratti hundaa'uun dabalamaa jiru.",
+
+
+      "citizen": {
+
+        "title": "Tajaajila Lammii",
+
+        "description":
+        "Taaksii kaffali, liqii ilaali, kaffaltii kee hordofi."
+
+      },
+
+
+      "revenue": {
+
+        "title": "Bulchiinsa Galii",
+
+        "description":
+        "Taaksii, kaffaltii, adabbii fi galii mootummaa bulchi."
+
+      },
+
+
+      "sector": {
+
+        "title": "Hojii Dameewwanii",
+
+        "description":
+        "Hojii lafa, ijaarsaa fi qorannoo waliin walitti hidha."
+
+      },
+
+
+      "soon":
+      "Damee dabalataa keessatti yeroo dhiyootti ni banama"
+
+    },
+
+
+    "about": {
+
+      "title":
+      "Sirna Mootummaa Dijitaalaa Ammaa",
+
+      "description":
+      "Sirni kun jiraattotaa fi waajjira mootummaa sirna tokko keessatti wal qunnamsiisa."
+
+    },
+
+
+    "footer": {
+
+      "copyright":
+      "Adama GovService Portal. Mirgi hundi eegamaadha.",
+
+      "report_issue":
+      "Rakkoo gabaasi ykn yaada kenni"
+
+    }
+
+  },
+  "navigation": {
+    "dashboard": "Gabatee Hojii",
+  
+    "facebook": "Facebook",
+    "facebook_pages": "Fuulawwan",
+    "facebook_posts": "Maxxansawwan",
+    "facebook_comments": "Yaadawwan",
+    "facebook_reactions": "Deebiiwwan",
+    "facebook_insights": "Hubannoo Fuulaa",
+    "facebook_connections": "Walitti Hidhamiinsa",
+    "facebook_sync_runs": "Adeemsa Walitti Makiinsaa",
+  
+    "ai_analytics": "Xiinxala AI",
+    "ai_sentiment": "Xiinxala Miiraa",
+    "ai_topics": "Mata-dureewwan",
+    "ai_insights": "Hubannoo AI",
+    "ai_settings": "Qindaa'ina AI",
+  
+    "reports": "Gabaasawwan",
+  
+    "announcements": "Beeksisawwan",
+  
+    "administration": "Bulchiinsa",
+    "users": "Fayyadamtoota",
+    "roles": "Gaheewwan",
+    "permissions": "Hayyamoota",
+  
+    "system_settings": "Qindaa'ina Sirnaa",
+    "system_logs": "Galmeewwan Sirnaa"
+  }
+}
