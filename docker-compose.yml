@@ -1,24 +1,32 @@
 services:
   frontend:
     container_name: facebook-sentiment-web
+
     build:
       context: .
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env.production}
+        NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL:?Set NEXT_PUBLIC_BASE_URL in .env.production}
+
     restart: unless-stopped
     init: true
+
     env_file:
       - .env.production
+
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
+
     expose:
       - "3000"
+
     networks:
       - traefik-public
+
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-public"

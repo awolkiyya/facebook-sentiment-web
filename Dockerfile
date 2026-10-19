@@ -10,13 +10,18 @@ WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Build-time environment variables required by Next.js
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_BASE_URL
+
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL}
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 RUN test -n "$NEXT_PUBLIC_API_URL" \
+    && test -n "$NEXT_PUBLIC_BASE_URL" \
     && npm run build
 
 
@@ -27,8 +32,6 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
-
-RUN chown node:node /app
 
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next/standalone ./
