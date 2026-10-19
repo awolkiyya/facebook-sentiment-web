@@ -358,3 +358,128 @@ export interface FacebookPostsQueryParams {
    */
   page?: number
 }
+
+/*
+|--------------------------------------------------------------------------
+| POSTS PAGINATION
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * Pagination metadata returned by Laravel.
+ */
+export interface FacebookPostsPagination {
+  /**
+   * Current page number.
+   */
+  current_page: number
+
+  /**
+   * Number of records requested per page.
+   */
+  per_page: number
+
+  /**
+   * Total number of matching posts.
+   */
+  total: number
+
+  /**
+   * Last available page.
+   */
+  last_page: number
+
+  /**
+   * Index of the first record on the current page.
+   */
+  from: number | null
+
+  /**
+   * Index of the last record on the current page.
+   */
+  to: number | null
+}
+
+/*
+|--------------------------------------------------------------------------
+| GET POSTS RESPONSE
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * Response returned by:
+ *
+ * GET /api/v1/facebook/pages/{facebookPageId}/posts
+ */
+export interface FacebookPostsResponse {
+  /**
+   * Indicates whether the request was successful.
+   */
+  success: boolean
+
+  /**
+   * Response payload.
+   */
+  data: {
+    /**
+     * Facebook posts for the requested page.
+     */
+    posts: FacebookPost[]
+
+    /**
+     * Pagination information.
+     */
+    pagination: FacebookPostsPagination
+  }
+
+  /**
+   * Optional API message.
+   */
+  message?: string
+}
+
+/*
+|--------------------------------------------------------------------------
+| SYNC POSTS RESPONSE
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * Response returned after requesting Facebook post synchronization.
+ */
+export interface FacebookPostsSyncResponse {
+  /**
+   * Indicates whether the synchronization request was accepted
+   * or completed successfully.
+   */
+  success: boolean
+
+  /**
+   * Human-readable synchronization message.
+   */
+  message: string
+
+  /**
+   * Synchronization metadata.
+   */
+  data: {
+    /**
+     * External Facebook Page ID.
+     *
+     * Example:
+     *
+     *     100297668388012
+     */
+    page_id: string
+
+    /**
+     * Local Laravel post UUIDs that require comment synchronization.
+     */
+    posts_for_comment_sync: string[]
+
+    /**
+     * Number of posts requiring comment synchronization.
+     */
+    posts_for_comment_sync_count: number
+  }
+}
