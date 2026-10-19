@@ -1,4 +1,3 @@
-
 "use client"
 
 import {
@@ -23,10 +22,16 @@ import {
   useRouter,
 } from "next/navigation"
 
+import { toast } from "sonner"
+
 import { Button } from "@/components/ui/button"
 
 import { useFacebookPages } from "@/hooks/facebook/use-facebook-pages"
-import { useFacebookPosts } from "@/hooks/facebook/use-facebook-posts"
+
+import {
+  useInfiniteFacebookPosts,
+  useSyncFacebookPosts,
+} from "@/hooks/facebook/use-facebook-posts"
 
 import type { FacebookPageSummary } from "@/types/facebook/page"
 import type { FacebookPost } from "@/types/facebook/post"
@@ -36,204 +41,135 @@ import {
   calculateFacebookPostAnalytics,
 } from "@/utils/facebook-post-analytics"
 
-import {
-  FacebookPageHeader,
-} from "@/components/facebook/facebook-page-header"
-
-import {
-  FacebookPostsKpi,
-} from "@/components/facebook/facebook-posts-kpi"
-
-import {
-  FacebookPostFilters,
-} from "@/components/facebook/facebook-post-filters"
-
-import {
-  FacebookPostList,
-} from "@/components/facebook/facebook-post-list"
-
-import {
-  FacebookInsightsRail,
-} from "@/components/facebook/insights/facebook-insights-rail"
-
-/*
-|--------------------------------------------------------------------------
-| Constants
-|--------------------------------------------------------------------------
-*/
+import { FacebookPageHeader } from "@/components/facebook/facebook-page-header"
+import { FacebookPostsKpi } from "@/components/facebook/facebook-posts-kpi"
+import { FacebookPostFilters } from "@/components/facebook/facebook-post-filters"
+import { FacebookPostList } from "@/components/facebook/facebook-post-list"
+import { FacebookInsightsRail } from "@/components/facebook/insights/facebook-insights-rail"
+import { FacebookPostsSummaryCards } from "@/components/facebook/facebook-posts-summary-cards"
 
 const POSTS_PER_PAGE = 20
 const SHOW_BACK_TO_TOP_AFTER = 600
+const SEARCH_DEBOUNCE_MS = 350
 
-/*
-|--------------------------------------------------------------------------
-| Helpers
-|--------------------------------------------------------------------------
-*/
+type AnalyticsSummary = ReturnType<
+  typeof calculateFacebookPostAnalytics
+>
 
 function normalizeSearch(value: string): string {
-  return value.trim().toLocaleLowerCase()
+  return value.trim()
 }
-
-function getTimestamp(value: string | null | undefined): number {
-  if (!value) {
-    return 0
-  }
-
-  const timestamp = Date.parse(value)
-
-  return Number.isNaN(timestamp) ? 0 : timestamp
-}
-
-/*
-|--------------------------------------------------------------------------
-| Page
-|--------------------------------------------------------------------------
-*/
 
 export default function PagePosts() {
   const router = useRouter()
   const pathname = usePathname()
   const params = useParams<{ id: string }>()
 
-  /*
-  |--------------------------------------------------------------------------
-  | Facebook Pages
-  |--------------------------------------------------------------------------
-  */
+  const { pages, getPages } = useFacebookPages()
 
-  const {
-    pages,
-    getPages,
-  } = useFacebookPages()
-
-  /*
-  |--------------------------------------------------------------------------
-  | Facebook Posts
-  |--------------------------------------------------------------------------
-  */
-
-  const {
-    posts,
-    pagination: postsPagination,
-    isLoading: isLoadingPosts,
-    isLoadingMore,
-    isSyncing: isSyncingPosts,
-    hasMorePosts,
-    getPosts,
-    loadMorePosts,
-    syncPosts,
-  } = useFacebookPosts()
-
-  /*
-  |--------------------------------------------------------------------------
-  | Route
-  |--------------------------------------------------------------------------
-  */
-
-  /**
-   * External Meta/Facebook Page ID.
-   * This is not the local Laravel UUID.
-   */
   const facebookPageId =
-    typeof params?.id === "string"
-      ? params.id
-      : ""
+    typeof params?.id === "string" ? params.id : ""
 
   const locale = pathname.split("/")[1] || "or"
 
   /*
-  |--------------------------------------------------------------------------
-  | Local UI State
-  |--------------------------------------------------------------------------
-  */
-
+   * Search input updates immediately. The API query changes
+   * after a short debounce to avoid a request per keystroke.
+   */
   const [search, setSearch] = useState("")
-  const [sortMode, setSortMode] = useState<SortMode>("recent")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  const [sortMode, setSortMode] =
+    useState<SortMode>("recent")
+
   const [expandedCommentsId, setExpandedCommentsId] =
     useState<string | null>(null)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [showBackToTop, setShowBackToTop] = useState(false)
 
-  /*
-  |--------------------------------------------------------------------------
-  | Back-To-Top Visibility
-  |--------------------------------------------------------------------------
-  */
+  const [showBackToTop, setShowBackToTop] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
-    const handleScroll = () => {
-      setShowBackToTop(
-        window.scrollY >= SHOW_BACK_TO_TOP_AFTER,
-      )
-    }
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(normalizeSearch(search))
+    }, SEARCH_DEBOUNCE_MS)
 
-    handleScroll()
-
-    window.addEventListener("scroll", handleScroll, {
-      passive: true,
-    })
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll)
-    }
-  }, [])
+    return () => window.clearTimeout(timeout)
+  }, [search])
 
   /*
-  |--------------------------------------------------------------------------
-  | Back To Top
-  |--------------------------------------------------------------------------
-  */
+   * Server-driven search and sorting.
+   *
+   * Keep these parameter names aligned with Laravel.
+   */
+  const queryParams = useMemo(
+    () => ({
+      per_page: POSTS_PER_PAGE,
+      search: debouncedSearch || undefined,
+      sort_by:
+        sortMode === "engagement"
+          ? ("engagement" as const)
+          : ("published_at" as const),
+      sort_direction: "desc" as const,
+    }),
+    [debouncedSearch, sortMode],
+  )
 
-  const handleBackToTop = useCallback(() => {
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    })
-  }, [])
+  const {
+    data: postsResponse,
+    isPending: isLoadingPosts,
+    isFetching: isFetchingPosts,
+    isError: isPostsError,
+    error: postsError,
+    refetch: refetchPosts,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteFacebookPosts(
+    facebookPageId,
+    queryParams,
+  )
+
+  const {
+    mutateAsync: synchronizePosts,
+    isPending: isSyncingPosts,
+  } = useSyncFacebookPosts()
 
   /*
-  |--------------------------------------------------------------------------
-  | Load Connected Facebook Pages
-  |--------------------------------------------------------------------------
-  */
+   * Infinite query pages are accumulated here.
+   */
+  const posts = useMemo<FacebookPost[]>(
+    () =>
+      postsResponse?.pages.flatMap(
+        (page) => page.data ?? [],
+      ) ?? [],
+    [postsResponse],
+  )
 
+  const summary = postsResponse?.pages[0].meta.summary;
+
+  const firstPage = postsResponse?.pages[0]
+  const pagination = firstPage?.meta?.pagination
+
+  /*
+   * Load the connected page metadata.
+   */
   useEffect(() => {
     if (!facebookPageId || pages.length > 0) {
       return
     }
 
     void getPages().catch((error: unknown) => {
-      console.error(
-        "Failed to load connected Facebook pages:",
-        error,
-      )
+      console.error("Failed to load Facebook pages:", error)
     })
   }, [facebookPageId, pages.length, getPages])
 
-  /*
-  |--------------------------------------------------------------------------
-  | Current Facebook Page
-  |--------------------------------------------------------------------------
-  */
-
-  const currentPage = useMemo(() => {
-    if (!facebookPageId) {
-      return null
-    }
-
-    return (
+  const currentPage = useMemo(
+    () =>
       pages.find(
         (page) => page.facebook_page_id === facebookPageId,
-      ) ?? null
-    )
-  }, [pages, facebookPageId])
-
-  /*
-  |--------------------------------------------------------------------------
-  | Display Page
-  |--------------------------------------------------------------------------
-  */
+      ) ?? null,
+    [pages, facebookPageId],
+  )
 
   const displayPage: FacebookPageSummary = currentPage
     ? {
@@ -254,131 +190,105 @@ export default function PagePosts() {
         isActive: false,
       }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Initial Posts Load
-  |--------------------------------------------------------------------------
-  */
 
-  const loadFacebookData = useCallback(async () => {
-    if (!facebookPageId) {
+  const totalPosts = pagination?.total ?? posts.length
+  const loadedPostsCount = posts.length
+
+  /*
+   * Back-to-top button.
+   */
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowBackToTop(
+        window.scrollY >= SHOW_BACK_TO_TOP_AFTER,
+      )
+    }
+
+    handleScroll()
+
+    window.addEventListener("scroll", handleScroll, {
+      passive: true,
+    })
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll)
+    }
+  }, [])
+
+  const handleBackToTop = useCallback(() => {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    })
+  }, [])
+
+  /*
+   * Refresh the currently active query.
+   */
+  const handleRefresh = useCallback(async () => {
+    if (!facebookPageId || isRefreshing) {
+      return
+    }
+
+    setIsRefreshing(true)
+
+    try {
+      await refetchPosts()
+    } catch (error) {
+      console.error("Failed to refresh Facebook posts:", error)
+      toast.error("Failed to refresh Facebook posts.")
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [facebookPageId, isRefreshing, refetchPosts])
+
+  /*
+   * Synchronization invalidates the page's post queries
+   * through the mutation hook.
+   */
+  const handleSyncPosts = useCallback(async () => {
+    if (!facebookPageId || isSyncingPosts) {
       return
     }
 
     try {
-      await getPosts(facebookPageId, {
-        page: 1,
-        per_page: POSTS_PER_PAGE,
+      await synchronizePosts({ facebookPageId })
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
       })
     } catch (error) {
-      console.error(
-        "Failed to load Facebook posts:",
-        error,
-      )
+      console.error("Failed to synchronize posts:", error)
     }
-  }, [facebookPageId, getPosts])
-
-  useEffect(() => {
-    void loadFacebookData()
-  }, [loadFacebookData])
+  }, [facebookPageId, isSyncingPosts, synchronizePosts])
 
   /*
-  |--------------------------------------------------------------------------
-  | Load More Posts
-  |--------------------------------------------------------------------------
-  */
-
+   * Proper Load More: fetches and appends the next page.
+   */
   const handleLoadMore = useCallback(async () => {
     if (
-      !facebookPageId ||
-      isLoadingMore ||
-      !hasMorePosts
+      !hasNextPage ||
+      isFetchingNextPage ||
+      isFetchingPosts ||
+      isSyncingPosts
     ) {
       return
     }
 
     try {
-      await loadMorePosts(facebookPageId)
+      await fetchNextPage()
     } catch (error) {
-      console.error(
-        "Failed to load more Facebook posts:",
-        error,
-      )
+      console.error("Failed to load more posts:", error)
+      toast.error("Failed to load more Facebook posts.")
     }
   }, [
-    facebookPageId,
-    isLoadingMore,
-    hasMorePosts,
-    loadMorePosts,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchingPosts,
+    isSyncingPosts,
+    fetchNextPage,
   ])
-
-  /*
-  |--------------------------------------------------------------------------
-  | Search And Sort API Posts
-  |--------------------------------------------------------------------------
-  |
-  | Keep the original FacebookPost model so that both FacebookPostList
-  | and calculateFacebookPostAnalytics receive their expected types.
-  |
-  */
-
-  const filteredPosts = useMemo<FacebookPost[]>(() => {
-    const normalizedSearch = normalizeSearch(search)
-
-    const filtered = posts.filter((post) => {
-      if (!normalizedSearch) {
-        return true
-      }
-
-      const message = post.message ?? ""
-      const topic = post.ai_analysis?.topic?.name ?? ""
-      const sentiment =
-        post.ai_analysis?.sentiment?.label ?? ""
-
-      return [message, topic, sentiment].some((value) =>
-        value.toLocaleLowerCase().includes(normalizedSearch),
-      )
-    })
-
-    return [...filtered].sort((a, b) => {
-      const timestampA = getTimestamp(
-        a.published_at ?? a.created_at,
-      )
-
-      const timestampB = getTimestamp(
-        b.published_at ?? b.created_at,
-      )
-
-      switch (sortMode) {
-        case "engagement":
-          return timestampA - timestampB
-
-        case "recent":
-        default:
-          return timestampB - timestampA
-      }
-    })
-  }, [posts, search, sortMode])
-
-  /*
-  |--------------------------------------------------------------------------
-  | Analytics
-  |--------------------------------------------------------------------------
-  |
-  | Analytics receives the original API posts, not filtered UI objects.
-  |
-  */
-
-  const analytics = useMemo(
-    () => calculateFacebookPostAnalytics(posts),
-    [posts],
-  )
-
-  /*
-  |--------------------------------------------------------------------------
-  | Comment Handlers
-  |--------------------------------------------------------------------------
-  */
 
   const handleToggleComments = useCallback(
     (postId: string) => {
@@ -389,9 +299,9 @@ export default function PagePosts() {
     [],
   )
 
-  /**
-   * postId is the local Laravel FacebookPost UUID.
-   * facebookPageId is the external Meta Page ID.
+  /*
+   * postId is the local Laravel post UUID.
+   * facebookPageId is the external Facebook Page ID.
    */
   const handleViewComments = useCallback(
     (postId: string) => {
@@ -403,85 +313,6 @@ export default function PagePosts() {
     },
     [router, locale, facebookPageId],
   )
-
-  /*
-  |--------------------------------------------------------------------------
-  | Sync Posts
-  |--------------------------------------------------------------------------
-  */
-
-  const handleSyncPosts = useCallback(async () => {
-    if (!facebookPageId) {
-      return
-    }
-
-    try {
-      await syncPosts(facebookPageId)
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      })
-    } catch (error) {
-      console.error(
-        "Failed to sync Facebook posts:",
-        error,
-      )
-    }
-  }, [facebookPageId, syncPosts])
-
-  /*
-  |--------------------------------------------------------------------------
-  | Refresh Posts
-  |--------------------------------------------------------------------------
-  */
-
-  const handleRefresh = useCallback(async () => {
-    if (!facebookPageId || isRefreshing) {
-      return
-    }
-
-    try {
-      setIsRefreshing(true)
-
-      await getPosts(facebookPageId, {
-        page: 1,
-        per_page:
-          postsPagination?.per_page ?? POSTS_PER_PAGE,
-      })
-    } catch (error) {
-      console.error(
-        "Failed to refresh Facebook posts:",
-        error,
-      )
-    } finally {
-      setIsRefreshing(false)
-    }
-  }, [
-    facebookPageId,
-    isRefreshing,
-    getPosts,
-    postsPagination?.per_page,
-  ])
-
-  /*
-  |--------------------------------------------------------------------------
-  | Loading And Counts
-  |--------------------------------------------------------------------------
-  */
-
-  const isLoading = isLoadingPosts || isSyncingPosts
-
-  const loadedPostsCount = posts.length
-
-  const totalPosts =
-    postsPagination?.total ?? loadedPostsCount
-
-  /*
-  |--------------------------------------------------------------------------
-  | Invalid Page
-  |--------------------------------------------------------------------------
-  */
 
   if (!facebookPageId) {
     return (
@@ -510,23 +341,19 @@ export default function PagePosts() {
     )
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Render
-  |--------------------------------------------------------------------------
-  */
-
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-4 sm:px-6 lg:px-8">
-      {/* Page Header */}
-
       <FacebookPageHeader
         page={displayPage}
         locale={locale}
       />
 
-      {/* Actions */}
+<FacebookPostsSummaryCards
+  summary={summary}
+  isLoading={isLoadingPosts && !firstPage}
+/>
 
+      {/* Page actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold">
@@ -534,8 +361,7 @@ export default function PagePosts() {
           </h2>
 
           <p className="mt-1 text-sm text-muted-foreground">
-            Monitor public response and AI-analyzed sentiment
-            across page posts.
+            Monitor public response and AI-analyzed sentiment across page posts.
           </p>
         </div>
 
@@ -548,9 +374,7 @@ export default function PagePosts() {
             title="Creating Facebook posts is not available"
           >
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              Add Post
-            </span>
+            <span className="hidden sm:inline">Add Post</span>
           </Button>
 
           <Button
@@ -562,9 +386,7 @@ export default function PagePosts() {
             title="Bulk post creation is not available"
           >
             <Files className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              Bulk Posts
-            </span>
+            <span className="hidden sm:inline">Bulk Posts</span>
           </Button>
 
           <Button
@@ -576,7 +398,7 @@ export default function PagePosts() {
               isSyncingPosts ||
               isLoadingPosts ||
               isRefreshing ||
-              isLoadingMore
+              isFetchingPosts
             }
             title="Sync posts"
             aria-label="Sync posts"
@@ -597,8 +419,9 @@ export default function PagePosts() {
             onClick={() => void handleRefresh()}
             disabled={
               isRefreshing ||
-              isLoading ||
-              isLoadingMore
+              isLoadingPosts ||
+              isSyncingPosts ||
+              isFetchingPosts
             }
             title="Refresh posts"
             aria-label="Refresh posts"
@@ -614,15 +437,10 @@ export default function PagePosts() {
         </div>
       </div>
 
-      {/* KPI */}
-
-      <FacebookPostsKpi kpis={analytics.kpis} />
-
-      {/* Main Content */}
+      {/* Backend-driven KPI data */}
+      {/* <FacebookPostsKpi kpis={analytics.kpis} /> */}
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-        {/* Posts Column */}
-
         <section className="min-w-0 space-y-4">
           <FacebookPostFilters
             search={search}
@@ -631,20 +449,48 @@ export default function PagePosts() {
             onSortModeChange={setSortMode}
           />
 
-          <FacebookPostList
-            posts={filteredPosts}
-            expandedCommentsId={expandedCommentsId}
-            onToggleComments={handleToggleComments}
-            onViewComments={handleViewComments}
-          />
+          {isPostsError && (
+            <div
+              className="rounded-lg border border-destructive/30 bg-destructive/5 p-4"
+              role="alert"
+            >
+              <p className="text-sm font-medium">
+                Failed to load Facebook posts.
+              </p>
 
-          {/* Load More */}
+              <p className="mt-1 text-sm text-muted-foreground">
+                {postsError instanceof Error
+                  ? postsError.message
+                  : "An unexpected error occurred."}
+              </p>
 
-          {!isLoadingPosts && posts.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => void refetchPosts()}
+              >
+                Try again
+              </Button>
+            </div>
+          )}
+
+          {!isLoadingPosts && !isPostsError && (
+            <FacebookPostList
+              posts={posts}
+              expandedCommentsId={expandedCommentsId}
+              onToggleComments={handleToggleComments}
+              onViewComments={handleViewComments}
+            />
+          )}
+
+          {/* Pagination */}
+          {!isLoadingPosts && !isPostsError && posts.length > 0 && (
             <div
               className="flex flex-col items-center justify-center border-t pt-5"
               aria-live="polite"
-              aria-busy={isLoadingMore}
+              aria-busy={isFetchingNextPage}
             >
               <p className="mb-3 text-xs text-muted-foreground">
                 Showing{" "}
@@ -658,20 +504,19 @@ export default function PagePosts() {
                 posts
               </p>
 
-              {hasMorePosts && (
+              {hasNextPage ? (
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => void handleLoadMore()}
                   disabled={
-                    isLoadingMore ||
-                    isLoadingPosts ||
+                    isFetchingNextPage ||
                     isSyncingPosts ||
                     isRefreshing
                   }
                   className="min-w-40 gap-2"
                 >
-                  {isLoadingMore ? (
+                  {isFetchingNextPage ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <span>Loading posts...</span>
@@ -680,9 +525,7 @@ export default function PagePosts() {
                     <span>Load more posts</span>
                   )}
                 </Button>
-              )}
-
-              {!hasMorePosts && (
+              ) : (
                 <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
                   <span className="h-px w-8 bg-border" />
                   <span>All posts loaded</span>
@@ -692,25 +535,24 @@ export default function PagePosts() {
             </div>
           )}
 
-          {/* Empty State */}
-
+          {/* Empty state */}
           {!isLoadingPosts &&
-            !isLoadingMore &&
-            filteredPosts.length === 0 && (
+            !isPostsError &&
+            posts.length === 0 && (
               <div className="rounded-xl border bg-background px-6 py-10 text-center">
                 <p className="text-sm font-medium">
-                  {search.trim()
+                  {debouncedSearch
                     ? "No posts match your search."
                     : "No Facebook posts found."}
                 </p>
 
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {search.trim()
+                  {debouncedSearch
                     ? "Try a different search term."
-                    : "Try refreshing the page or synchronizing posts from Facebook."}
+                    : "Try refreshing or synchronizing posts from Facebook."}
                 </p>
 
-                {search.trim() && (
+                {search && (
                   <Button
                     type="button"
                     variant="outline"
@@ -724,9 +566,8 @@ export default function PagePosts() {
               </div>
             )}
 
-          {/* Initial Loading */}
-
-          {isLoadingPosts && posts.length === 0 && (
+          {/* Initial loading */}
+          {isLoadingPosts && (
             <div
               className="flex min-h-32 items-center justify-center"
               aria-live="polite"
@@ -740,20 +581,18 @@ export default function PagePosts() {
           )}
         </section>
 
-        {/* Insights */}
-
+        {/* Backend aggregate insights */}
         <aside className="min-w-0 xl:sticky xl:top-6">
-          <FacebookInsightsRail
+          {/* <FacebookInsightsRail
             executiveSummary={analytics.executiveSummary}
             topics={analytics.topics}
             mostDiscussedPost={analytics.mostDiscussedPost}
             onViewComments={handleViewComments}
-          />
+          /> */}
         </aside>
       </div>
 
-      {/* Back To Top */}
-
+      {/* Back to top */}
       {showBackToTop && (
         <div className="fixed right-4 bottom-5 z-50 sm:right-5 sm:bottom-6 lg:right-6">
           <Button

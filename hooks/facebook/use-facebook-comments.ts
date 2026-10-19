@@ -13,68 +13,77 @@ import type {
   CommentsQueryParams,
 } from "@/types/facebook/post-comments-analytics"
 
-/*
-|--------------------------------------------------------------------------
-| Query Keys
-|--------------------------------------------------------------------------
-*/
+/* -------------------------------------------------------------------------- */
+/* Query Keys                                                                 */
+/* -------------------------------------------------------------------------- */
 
 export const facebookCommentKeys = {
   all: ["facebook-comments"] as const,
 
-  post: (postId: string) =>
-    [...facebookCommentKeys.all, postId] as const,
+  page: (facebookPageId: string) =>
+    [...facebookCommentKeys.all, facebookPageId] as const,
+
+  post: (facebookPageId: string, postId: string) =>
+    [...facebookCommentKeys.page(facebookPageId), postId] as const,
 
   comments: (
+    facebookPageId: string,
     postId: string,
     params: CommentsQueryParams,
   ) =>
     [
-      ...facebookCommentKeys.post(postId),
+      ...facebookCommentKeys.post(facebookPageId, postId),
       "list",
       params,
     ] as const,
 
-  analytics: (postId: string) =>
+  analytics: (facebookPageId: string, postId: string) =>
     [
-      ...facebookCommentKeys.post(postId),
+      ...facebookCommentKeys.post(facebookPageId, postId),
       "analytics",
     ] as const,
 
-  topics: (postId: string) =>
+  topics: (facebookPageId: string, postId: string) =>
     [
-      ...facebookCommentKeys.post(postId),
+      ...facebookCommentKeys.post(facebookPageId, postId),
       "topics",
     ] as const,
 
-  sync: (postId: string) =>
+  sync: (facebookPageId: string, postId: string) =>
     [
-      ...facebookCommentKeys.post(postId),
+      ...facebookCommentKeys.post(facebookPageId, postId),
       "sync",
     ] as const,
 }
 
-/*
-|--------------------------------------------------------------------------
-| Fetch Post Comments
-|--------------------------------------------------------------------------
-*/
+/* -------------------------------------------------------------------------- */
+/* Fetch Post Comments                                                        */
+/* -------------------------------------------------------------------------- */
 
 export function useFacebookPostComments(
+  facebookPageId: string,
   postId: string,
   params: CommentsQueryParams = {},
   enabled = true,
 ) {
   return useQuery({
-    queryKey: facebookCommentKeys.comments(postId, params),
+    queryKey: facebookCommentKeys.comments(
+      facebookPageId,
+      postId,
+      params,
+    ),
 
     queryFn: () =>
       postCommentsAnalyticsService.getComments(
+        facebookPageId,
         postId,
         params,
       ),
 
-    enabled: Boolean(postId.trim()) && enabled,
+    enabled:
+      Boolean(facebookPageId.trim()) &&
+      Boolean(postId.trim()) &&
+      enabled,
 
     placeholderData: (previousData) => previousData,
 
@@ -82,76 +91,110 @@ export function useFacebookPostComments(
   })
 }
 
-/*
-|--------------------------------------------------------------------------
-| Fetch Comment Sentiment Analytics
-|--------------------------------------------------------------------------
-*/
+/* -------------------------------------------------------------------------- */
+/* Fetch Comment Sentiment Analytics                                          */
+/* -------------------------------------------------------------------------- */
 
 export function useFacebookPostCommentsAnalytics(
+  facebookPageId: string,
   postId: string,
   enabled = true,
 ) {
   return useQuery({
-    queryKey: facebookCommentKeys.analytics(postId),
+    queryKey: facebookCommentKeys.analytics(
+      facebookPageId,
+      postId,
+    ),
 
     queryFn: () =>
-      postCommentsAnalyticsService.getAnalytics(postId),
+      postCommentsAnalyticsService.getAnalytics(
+        facebookPageId,
+        postId,
+      ),
 
-    enabled: Boolean(postId.trim()) && enabled,
+    enabled:
+      Boolean(facebookPageId.trim()) &&
+      Boolean(postId.trim()) &&
+      enabled,
 
     staleTime: 60_000,
   })
 }
 
-/*
-|--------------------------------------------------------------------------
-| Fetch Classified Topics
-|--------------------------------------------------------------------------
-*/
+/* -------------------------------------------------------------------------- */
+/* Fetch Classified Topics                                                    */
+/* -------------------------------------------------------------------------- */
 
 export function useFacebookCommentTopics(
+  facebookPageId: string,
   postId: string,
   enabled = true,
 ) {
   return useQuery({
-    queryKey: facebookCommentKeys.topics(postId),
+    queryKey: facebookCommentKeys.topics(
+      facebookPageId,
+      postId,
+    ),
 
     queryFn: () =>
-      postCommentsAnalyticsService.getTopics(postId),
+      postCommentsAnalyticsService.getTopics(
+        facebookPageId,
+        postId,
+      ),
 
-    enabled: Boolean(postId.trim()) && enabled,
+    enabled:
+      Boolean(facebookPageId.trim()) &&
+      Boolean(postId.trim()) &&
+      enabled,
 
     staleTime: 60_000,
   })
 }
 
-/*
-|--------------------------------------------------------------------------
-| Synchronize Comments
-|--------------------------------------------------------------------------
-*/
+/* -------------------------------------------------------------------------- */
+/* Synchronize Comments                                                       */
+/* -------------------------------------------------------------------------- */
 
-export function useSyncFacebookComments(postId: string) {
+export function useSyncFacebookComments(
+  facebookPageId: string,
+  postId: string,
+) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationKey: facebookCommentKeys.sync(postId),
+    mutationKey: facebookCommentKeys.sync(
+      facebookPageId,
+      postId,
+    ),
 
     mutationFn: () => {
+      if (!facebookPageId.trim()) {
+        throw new Error(
+          "A valid Facebook Page ID is required to synchronize comments.",
+        )
+      }
+
       if (!postId.trim()) {
         throw new Error(
           "A valid Facebook post ID is required to synchronize comments.",
         )
       }
 
-      return postCommentsAnalyticsService.syncComments(postId)
+      return postCommentsAnalyticsService.syncComments(
+        facebookPageId,
+        postId,
+      )
     },
 
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: facebookCommentKeys.post(postId),
-      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: facebookCommentKeys.post(
+            facebookPageId,
+            postId,
+          ),
+        }),
+      ])
     },
   })
 }

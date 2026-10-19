@@ -85,6 +85,7 @@ export interface FacebookComment {
 export interface FacebookCommentsQueryParams {
   per_page?: number
   page?: number
+  sort_by?:string
 }
 
 /*

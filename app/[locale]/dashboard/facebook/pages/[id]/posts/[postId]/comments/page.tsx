@@ -71,7 +71,7 @@ import {
 import { toast } from "sonner"
 import { CommentTopic, FacebookComment } from "@/types/facebook/post-comments-analytics"
 import AiPostInsightPopover from "@/components/facebook/post-comments/ai-post-insight-sheet"
-import { useFacebookPosts } from "@/hooks/facebook/use-facebook-posts"
+import { useFacebookPost } from "@/hooks/facebook/use-facebook-posts"
 
 /* -------------------------------------------------------------------------- */
 /* Mock mode                                                                  */
@@ -958,16 +958,17 @@ function PostComments() {
   const facebookPostId = params.postId
 
 
-  const [post, setPost] = useState<FacebookPost | null>(null)
-const [isLoadingPost, setIsLoadingPost] = useState(true)
 
-  const { findPostById } = useFacebookPosts()
+  const { data:post,isPending } = useFacebookPost(facebookPageId,facebookPostId);
+
+
+  console.log(post);
 
   /* ------------------------------------------------------------------------ */
   /* Data hooks                                                               */
   /* ------------------------------------------------------------------------ */
 
-  const commentsQuery = useFacebookPostComments(facebookPostId, {
+  const commentsQuery = useFacebookPostComments(facebookPageId,facebookPostId, {
     page: 1,
     perPage: 100,
     sortBy: "newest",
@@ -976,8 +977,8 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
   // Server-side analytics: available for when you move aggregation off the client.
    
 
-  const topicsQuery = useFacebookCommentTopics(facebookPostId)
-  const syncMutation = useSyncFacebookComments(facebookPostId)
+  const topicsQuery = useFacebookCommentTopics(facebookPageId,facebookPostId)
+  const syncMutation = useSyncFacebookComments(facebookPageId,facebookPostId)
 
   const isSyncingComments = syncMutation.isPending
 
@@ -1012,44 +1013,7 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
   }, [])
 
 
-  useEffect(() => {
-    let cancelled = false
-  
-    async function loadPost() {
-      if (!facebookPageId || !facebookPostId) {
-        setPost(null)
-        setIsLoadingPost(false)
-        return
-      }
-  
-      setIsLoadingPost(true)
-  
-      try {
-        const result = await findPostById(facebookPageId,facebookPostId)
-  
-        if (!cancelled) {
-          setPost(result)
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setPost(null)
-  
-          console.error("Failed to load Facebook post:", error)
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingPost(false)
-        }
-      }
-    }
-  
-    void loadPost()
-  
-    return () => {
-      cancelled = true
-    }
-  }, [facebookPageId, facebookPostId, findPostById])
-
+ 
 
   /* ------------------------------------------------------------------------ */
   /* Topics                                                                   */
@@ -1072,7 +1036,6 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
     )
   }, [commentsQuery.data])
 
-  const totalComments = uiComments.length
 
   /* ------------------------------------------------------------------------ */
   /* Date range                                                               */
@@ -1395,13 +1358,12 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
               ? `${customFrom || "..."} – ${customTo || "..."}`
               : "Custom range"
 
-  const postMessage = post?.message ?? "Post content unavailable."
-  const postLikes = post?.engagement?.likes ?? 0
-  const postShares = post?.engagement?.shares ?? 0
+      const postMessage = post?.data.message ?? "Post content unavailable."
+      const postLikes = post?.data.engagement.likes ?? 0
+      const postShares = post?.data.engagement?.shares ?? 0
 
   const hasData = analyzedCount > 0
 
-  const isPostLoading = isLoadingPost && !post && !USE_MOCK_DATA
 
   /* ------------------------------------------------------------------------ */
   /* Render                                                                   */
@@ -1410,7 +1372,7 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
   return (
     <TooltipProvider delayDuration={150}>
       <div className="min-h-screen bg-muted/20 max-w-5xl m-auto">
-        <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+        <div className="px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
           {/* Top bar */}
           <header className="flex items-center justify-between gap-4">
             <Button
@@ -1425,15 +1387,7 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
             </Button>
 
             <div className="flex items-center gap-2">
-              {USE_MOCK_DATA && (
-                <Badge
-                  variant="secondary"
-                  className="hidden gap-1.5 text-[10px] font-normal sm:flex"
-                >
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                  Preview data
-                </Badge>
-              )}
+              
 
               <Button
                 variant="outline"
@@ -1473,7 +1427,7 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
 
           {/* Post context */}
           <Card className="mt-6 overflow-hidden border-border/70 shadow-sm">
-            {isPostLoading ? (
+            {isPending ? (
               <CardContent className="p-5 sm:p-6">
                 <div className="flex gap-4">
                   <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
@@ -1486,10 +1440,10 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
               </CardContent>
             ) : (
               <FacebookPostSummary
-                postDate={post!.published_at!}
+                postDate={post?.data.published_at!}
                 postMessage={postMessage}
                 postLikes={postLikes}
-                totalComments={totalComments}
+                totalComments={post?.data.engagement.comments??0}
                 postShares={postShares}
                 formatDate={formatDate}
                 formatNumber={formatNumber}
@@ -1498,7 +1452,7 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
           </Card>
 
           {/* Post tools */}
-          {!isPostLoading && (
+          {!isPending && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {postTopics.length > 0 && <TopicsSheet topics={postTopics} />}
 
@@ -1514,7 +1468,7 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
 
           {/* Analytics */}
           <section className="mt-9">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            {/* <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg font-semibold tracking-tight">
@@ -1588,10 +1542,10 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-            </div>
+            </div> */}
 
             {/* Custom dates */}
-            {dateRange === "custom" && (
+            {/* {dateRange === "custom" && (
               <Card className="mt-4 border-border/70 shadow-none">
                 <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
                   <div>
@@ -1618,12 +1572,12 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
                   </div>
                 </CardContent>
               </Card>
-            )}
+            )} */}
 
             {/* Analytics grid */}
             <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_240px]">
               {/* Overall */}
-              <Card className="border-border/70 shadow-none">
+              {/* <Card className="border-border/70 shadow-none">
                 <CardHeader className="pb-0">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-sm font-semibold">
@@ -1651,10 +1605,10 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
                     {overallLabel}
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
 
               {/* Distribution */}
-              <Card className="border-border/70 shadow-none">
+              {/* <Card className="border-border/70 shadow-none">
                 <CardHeader className="pb-0">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-sm font-semibold">
@@ -1688,10 +1642,10 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
                     </div>
                   )}
                 </CardContent>
-              </Card>
+              </Card> */}
 
               {/* KPI */}
-              <div className="grid grid-cols-2 gap-4 xl:grid-cols-1">
+              {/* <div className="grid grid-cols-2 gap-4 xl:grid-cols-1">
                 <StatCard
                   icon={MessageCircle}
                   label="Comments"
@@ -1707,11 +1661,11 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
                   growthPercent={usersGrowth}
                   accent="bg-violet-500/10 text-violet-600 dark:text-violet-400"
                 />
-              </div>
+              </div> */}
             </div>
 
             {/* Timeline */}
-            <SentimentTimeline data={timeline} />
+            {/* <SentimentTimeline data={timeline} /> */}
 
             {/* What people are saying */}
             {(topPositive || topNegative) && (
@@ -1744,7 +1698,7 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
                           key={sentiment}
                           className="border-border/70 shadow-none"
                         >
-                          <CardContent className="p-4">
+                          {/* <CardContent className="p-4">
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
                                 <span
@@ -1807,7 +1761,7 @@ const [isLoadingPost, setIsLoadingPost] = useState(true)
                                 </div>
                               </div>
                             </div>
-                          </CardContent>
+                          </CardContent> */}
                         </Card>
                       ),
                   )}

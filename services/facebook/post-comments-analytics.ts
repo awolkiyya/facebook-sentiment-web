@@ -1,5 +1,6 @@
 
-import { api } from "@/lib/api/api";
+import { api } from "@/lib/api/api"
+
 import type {
   CommentsQueryParams,
   FacebookComment,
@@ -7,123 +8,160 @@ import type {
   PostCommentsAnalytics,
   PostCommentsAnalyticsResponse,
   SyncCommentsResult,
-} from "@/types/facebook/post-comments-analytics";
+} from "@/types/facebook/post-comments-analytics"
 
-/**
- * Adjust these paths to match the routes registered in Laravel.
- *
- * Keep route definitions centralized here rather than embedding
- * endpoint strings in React components.
- */
-const FACEBOOK_POSTS_BASE = "/facebook/posts";
+/* -------------------------------------------------------------------------- */
+/* Routes                                                                     */
+/* -------------------------------------------------------------------------- */
+
+const FACEBOOK_PAGES_BASE = "/v1/facebook/pages"
 
 function encodePathSegment(value: string): string {
-  return encodeURIComponent(value);
+  return encodeURIComponent(value)
 }
 
-function buildQueryParams(params: CommentsQueryParams): URLSearchParams {
-  const query = new URLSearchParams();
+function getPostCommentsPath(
+  facebookPageId: string,
+  facebookPostId: string,
+): string {
+  return [
+    FACEBOOK_PAGES_BASE,
+    encodePathSegment(facebookPageId),
+    "posts",
+    encodePathSegment(facebookPostId),
+    "comments",
+  ].join("/")
+}
+
+/* -------------------------------------------------------------------------- */
+/* Query Parameters                                                           */
+/* -------------------------------------------------------------------------- */
+
+function buildQueryParams(
+  params: CommentsQueryParams,
+): URLSearchParams {
+  const query = new URLSearchParams()
 
   if (params.page !== undefined) {
-    query.set("page", String(params.page));
+    query.set("page", String(params.page))
   }
 
   if (params.perPage !== undefined) {
-    query.set("per_page", String(params.perPage));
+    query.set("per_page", String(params.perPage))
   }
 
   if (params.search?.trim()) {
-    query.set("search", params.search.trim());
+    query.set("search", params.search.trim())
   }
 
   if (params.sentiment) {
-    query.set("sentiment", params.sentiment);
+    query.set("sentiment", params.sentiment)
   }
 
   if (params.language) {
-    query.set("language", params.language);
+    query.set("language", params.language)
   }
 
   if (params.analysisStatus) {
-    query.set("analysis_status", params.analysisStatus);
+    query.set("analysis_status", params.analysisStatus)
   }
 
   if (params.sortBy) {
-    query.set("sort_by", params.sortBy);
+    query.set("sort_by", params.sortBy)
   }
 
   if (params.startDate) {
-    query.set("start_date", params.startDate);
+    query.set("start_date", params.startDate)
   }
 
   if (params.endDate) {
-    query.set("end_date", params.endDate);
+    query.set("end_date", params.endDate)
   }
 
-  return query;
+  return query
 }
+
+/* -------------------------------------------------------------------------- */
+/* Error Handling                                                             */
+/* -------------------------------------------------------------------------- */
 
 function getErrorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null) {
     const candidate = error as {
       response?: {
         data?: {
-          message?: string;
-          error?: string;
-        };
-      };
-      message?: string;
-    };
+          message?: string
+          error?: string
+        }
+      }
+      message?: string
+    }
 
     return (
       candidate.response?.data?.message ??
       candidate.response?.data?.error ??
       candidate.message ??
       "An unexpected error occurred while communicating with the API."
-    );
+    )
   }
 
-  return "An unexpected error occurred while communicating with the API.";
+  return "An unexpected error occurred while communicating with the API."
 }
+
+/* -------------------------------------------------------------------------- */
+/* Response Normalization                                                     */
+/* -------------------------------------------------------------------------- */
 
 function normalizePaginatedCommentsResponse(
   response: unknown,
 ): PaginatedCommentsResponse {
   const payload = response as {
-    data?: FacebookComment[] | { data?: FacebookComment[] };
+    data?:
+      | FacebookComment[]
+      | {
+          data?: FacebookComment[]
+        }
     meta?: {
-      current_page?: number;
-      per_page?: number;
-      total?: number;
-      last_page?: number;
-    };
-    current_page?: number;
-    per_page?: number;
-    total?: number;
-    last_page?: number;
-  };
+      current_page?: number
+      per_page?: number
+      total?: number
+      last_page?: number
+      pagination?: {
+        current_page?: number
+        per_page?: number
+        total?: number
+        last_page?: number
+      }
+    }
+    current_page?: number
+    per_page?: number
+    total?: number
+    last_page?: number
+  }
 
-  // Supports Laravel ResourceCollection responses whose `data`
-  // property contains the actual array.
   const nested = Array.isArray(payload.data)
     ? payload.data
-    : payload.data?.data ?? [];
+    : payload.data?.data ?? []
+
+  const pagination = payload.meta?.pagination ?? payload.meta
 
   const currentPage = Number(
-    payload.meta?.current_page ?? payload.current_page ?? 1,
-  );
+    pagination?.current_page ?? payload.current_page ?? 1,
+  )
 
   const perPage = Number(
-    payload.meta?.per_page ?? payload.per_page ?? nested.length,
-  );
+    pagination?.per_page ?? payload.per_page ?? nested.length,
+  )
 
-  const total = Number(payload.meta?.total ?? payload.total ?? nested.length);
+  const total = Number(
+    pagination?.total ?? payload.total ?? nested.length,
+  )
 
   const lastPage = Number(
-    payload.meta?.last_page ??
+    pagination?.last_page ??
       payload.last_page ??
       Math.max(1, Math.ceil(total / Math.max(perPage, 1))),
-  );
+  )
 
   return {
     data: nested,
@@ -134,107 +172,130 @@ function normalizePaginatedCommentsResponse(
       lastPage,
       hasMorePages: currentPage < lastPage,
     },
-  };
+  }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Service                                                                    */
+/* -------------------------------------------------------------------------- */
 
 export const postCommentsAnalyticsService = {
   /**
-   * Fetch a single page of comments for a post.
+   * Retrieve saved comments for a specific Facebook post.
    *
-   * `postId` should be the internal post UUID expected by your API,
-   * unless your Laravel route explicitly uses the Facebook post ID.
+   * facebookPageId:
+   *   External Meta/Facebook Page ID.
+   *
+   * facebookPostId:
+   *   Internal Laravel FacebookPost UUID.
    */
   async getComments(
-    postId: string,
+    facebookPageId: string,
+    facebookPostId: string,
     params: CommentsQueryParams = {},
   ): Promise<PaginatedCommentsResponse> {
     try {
-      const query = buildQueryParams(params).toString();
-      const path =
-        `${FACEBOOK_POSTS_BASE}/${encodePathSegment(postId)}/comments`;
+      const path = getPostCommentsPath(
+        facebookPageId,
+        facebookPostId,
+      )
+
+      const query = buildQueryParams(params).toString()
 
       const response = await api.get(
         query ? `${path}?${query}` : path,
-      );
+      )
 
-      return normalizePaginatedCommentsResponse(response.data);
+      return normalizePaginatedCommentsResponse(response.data)
     } catch (error) {
-      throw new Error(getErrorMessage(error));
+      throw new Error(getErrorMessage(error))
     }
   },
 
   /**
-   * Fetch aggregate analytics for a post.
+   * Retrieve comment analytics.
    *
-   * Expected response:
-   * { data: PostCommentsAnalytics }
+   * IMPORTANT:
+   * This assumes Laravel registers:
+   * GET /{facebookPageId}/posts/{facebookPostId}/comments/analytics
    */
   async getAnalytics(
-    postId: string,
+    facebookPageId: string,
+    facebookPostId: string,
   ): Promise<PostCommentsAnalytics> {
     try {
-      const path =
-        `${FACEBOOK_POSTS_BASE}/${encodePathSegment(postId)}/comments/analytics`;
+      const path = `${getPostCommentsPath(
+        facebookPageId,
+        facebookPostId,
+      )}/analytics`
 
-      const response = await api.get<PostCommentsAnalyticsResponse>(path);
+      const response =
+        await api.get<PostCommentsAnalyticsResponse>(path)
 
-      return response.data.data;
+      return response.data.data
     } catch (error) {
-      throw new Error(getErrorMessage(error));
+      throw new Error(getErrorMessage(error))
     }
   },
 
   /**
-   * Fetch topics identified in comments for a post.
+   * Retrieve comment topics.
    *
-   * If your analytics endpoint already includes topics, you may remove
-   * this method and use analytics.data.topics instead.
+   * IMPORTANT:
+   * This assumes Laravel registers:
+   * GET /{facebookPageId}/posts/{facebookPostId}/comments/topics
    */
   async getTopics(
-    postId: string,
+    facebookPageId: string,
+    facebookPostId: string,
   ): Promise<PostCommentsAnalytics["topics"]> {
     try {
-      const path =
-        `${FACEBOOK_POSTS_BASE}/${encodePathSegment(postId)}/comments/topics`;
+      const path = `${getPostCommentsPath(
+        facebookPageId,
+        facebookPostId,
+      )}/topics`
 
       const response = await api.get<{
-        data: PostCommentsAnalytics["topics"];
-      }>(path);
+        data: PostCommentsAnalytics["topics"]
+      }>(path)
 
-      return response.data.data;
+      return response.data.data
     } catch (error) {
-      throw new Error(getErrorMessage(error));
+      throw new Error(getErrorMessage(error))
     }
   },
 
   /**
-   * Request synchronization from Facebook through your Laravel backend.
+   * Synchronize comments from Meta through Laravel.
    *
-   * This endpoint should queue the sync and return its actual status.
-   * It should not report success merely because a request was submitted.
+   * Expected route:
+   * POST /{facebookPageId}/posts/{facebookPostId}/comments/sync
    */
   async syncComments(
-    postId: string,
+    facebookPageId: string,
+    facebookPostId: string,
   ): Promise<SyncCommentsResult> {
     try {
-      const path =
-        `${FACEBOOK_POSTS_BASE}/${encodePathSegment(postId)}/comments/sync`;
+      const path = `${getPostCommentsPath(
+        facebookPageId,
+        facebookPostId,
+      )}/sync`
 
-      const response = await api.post<{ data?: SyncCommentsResult } | SyncCommentsResult>(
-        path,
-      );
+      const response = await api.post<
+        { data?: SyncCommentsResult } | SyncCommentsResult
+      >(path)
 
-      const payload = response.data;
+      const payload = response.data
 
       if ("data" in payload && payload.data) {
-        return payload.data;
+        return payload.data
       }
 
-      return payload as SyncCommentsResult;
+      return payload as SyncCommentsResult
     } catch (error) {
-      throw new Error(getErrorMessage(error));
+      throw new Error(getErrorMessage(error))
     }
   },
-};
+}
 
-export { getErrorMessage };
+export { getErrorMessage }

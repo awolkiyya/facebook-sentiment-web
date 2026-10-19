@@ -1,3 +1,4 @@
+
 /**
  * FACEBOOK COMMENT SERVICE
  */
@@ -10,26 +11,50 @@ import type {
   FacebookCommentsSyncResponse,
 } from "@/types/facebook/comment"
 
+/* -------------------------------------------------------------------------- */
+/* Constants                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const DEFAULT_QUERY_PARAMS: Required<FacebookCommentsQueryParams> = {
+  page: 1,
+  per_page: 100,
+  sort_by: "newest",
+}
+
+/* -------------------------------------------------------------------------- */
+/* Service                                                                    */
+/* -------------------------------------------------------------------------- */
+
 export const facebookCommentService = {
   /**
-   * Get saved comments for a Facebook post.
+   * Retrieve saved comments for a Facebook post.
    *
-   * facebookPageId = external Meta/Facebook Page ID.
+   * facebookPageId:
+   *   External Meta/Facebook Page ID.
    *
-   * facebookPostId = internal Laravel FacebookPost UUID.
+   * facebookPostId:
+   *   Internal Laravel FacebookPost UUID.
+   *
+   * Expected endpoint:
+   *   GET /v1/facebook/pages/{facebookPageId}/posts/{facebookPostId}/comments
    */
   getComments: async (
     facebookPageId: string,
     facebookPostId: string,
-    params?: FacebookCommentsQueryParams
+    params?: FacebookCommentsQueryParams,
   ): Promise<FacebookCommentsResponse> => {
-    const response =
-      await api.get<FacebookCommentsResponse>(
-        `/v1/facebook/pages/${facebookPageId}/posts/${facebookPostId}/comments`,
-        {
-          params,
-        }
-      )
+    const pageId = encodeURIComponent(facebookPageId)
+    const postId = encodeURIComponent(facebookPostId)
+
+    const response = await api.get<FacebookCommentsResponse>(
+      `/v1/facebook/pages/${pageId}/posts/${postId}/comments`,
+      {
+        params: {
+          ...DEFAULT_QUERY_PARAMS,
+          ...params,
+        },
+      },
+    )
 
     return response.data
   },
@@ -37,18 +62,19 @@ export const facebookCommentService = {
   /**
    * Synchronize comments for a Facebook post from Meta.
    *
-   * facebookPageId = external Meta/Facebook Page ID.
-   *
-   * facebookPostId = internal Laravel FacebookPost UUID.
+   * Expected endpoint:
+   *   POST /v1/facebook/pages/{facebookPageId}/posts/{facebookPostId}/comments/sync
    */
   syncComments: async (
     facebookPageId: string,
-    facebookPostId: string
+    facebookPostId: string,
   ): Promise<FacebookCommentsSyncResponse> => {
-    const response =
-      await api.post<FacebookCommentsSyncResponse>(
-        `/v1/facebook/pages/${facebookPageId}/posts/${facebookPostId}/comments/sync`
-      )
+    const pageId = encodeURIComponent(facebookPageId)
+    const postId = encodeURIComponent(facebookPostId)
+
+    const response = await api.post<FacebookCommentsSyncResponse>(
+      `/v1/facebook/pages/${pageId}/posts/${postId}/comments/sync`,
+    )
 
     return response.data
   },

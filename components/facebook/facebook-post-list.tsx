@@ -22,21 +22,6 @@ export function FacebookPostList({
   onToggleComments,
   onViewComments,
 }: FacebookPostListProps) {
-  if (posts.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed p-10 text-center">
-        <p className="text-sm font-medium">
-          No posts found
-        </p>
-
-        <p className="mt-1 text-sm text-muted-foreground">
-          Try changing your search or sentiment
-          filter.
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-4">
       {posts.map((post) => (

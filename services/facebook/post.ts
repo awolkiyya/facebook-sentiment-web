@@ -3,11 +3,11 @@
  */
 
 import { api } from "@/lib/api/api"
+import { PaginatedResponse, SingleResponse } from "@/types/api"
 
 import type {
+  FacebookPost,
   FacebookPostsQueryParams,
-  FacebookPostsResponse,
-  FacebookPostsSyncResponse,
 } from "@/types/facebook/post"
 
 export const facebookPostService = {
@@ -19,8 +19,8 @@ export const facebookPostService = {
   getPosts: async (
     facebookPageId: string,
     params?: FacebookPostsQueryParams
-  ): Promise<FacebookPostsResponse> => {
-    const response = await api.get<FacebookPostsResponse>(
+  ): Promise<PaginatedResponse<FacebookPost>> => {
+    const response = await api.get<PaginatedResponse<FacebookPost>>(
       `/v1/facebook/pages/${facebookPageId}/posts`,
       {
         params,
@@ -35,11 +35,27 @@ export const facebookPostService = {
    */
   syncPosts: async (
     facebookPageId: string
-  ): Promise<FacebookPostsSyncResponse> => {
+  ): Promise<SingleResponse<FacebookPost>> => {
     const response =
-      await api.post<FacebookPostsSyncResponse>(
+      await api.post<SingleResponse<FacebookPost>>(
         `/v1/facebook/pages/${facebookPageId}/posts/sync`
       )
+
+    return response.data
+  },
+
+  /**
+   * Get a single saved Facebook post by ID.
+   *
+   * GET /v1/facebook/pages/{facebookPageId}/posts/{postId}
+   */
+  getPostById: async (
+    facebookPageId: string,
+    postId: string,
+  ): Promise<SingleResponse<FacebookPost>> => {
+    const response = await api.get<SingleResponse<FacebookPost>>(
+      `/v1/facebook/pages/${facebookPageId}/posts/${postId}`,
+    )
 
     return response.data
   },
