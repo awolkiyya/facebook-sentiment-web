@@ -188,7 +188,7 @@ export default function LoginPage() {
                   CivicPulse
                 </p>
                 <p className="mt-0.5 text-[9px] uppercase tracking-[0.2em] text-white/40">
-                  Mayor's Office Console
+                  Mayors Office Console
                 </p>
               </div>
             </div>

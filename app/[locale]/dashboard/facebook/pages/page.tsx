@@ -411,9 +411,6 @@ export default function FacebookPagesConnect() {
   const mfaRequired =
     security?.require_two_factor ?? false;
 
-  const mfaSetupRequired =
-    security?.mfa_setup_required ?? false;
-
   /*
   |--------------------------------------------------------------------------
   | Facebook OAuth Result

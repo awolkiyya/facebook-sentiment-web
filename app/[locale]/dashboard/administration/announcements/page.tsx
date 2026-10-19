@@ -1,7 +1,6 @@
 "use client"
 
 import React, {
-  useEffect,
   useMemo,
   useState,
 } from "react"
@@ -538,7 +537,6 @@ export default function AnnouncementsPage() {
     isLoading,
     isFetching,
     isError,
-    error,
   } = useNotifications({
     search,
     status: statusFilter,
@@ -1039,11 +1037,15 @@ export default function AnnouncementsPage() {
      RESET EDIT STATE WHEN SHEET CLOSES
   ======================================================= */
 
-  useEffect(() => {
-    if (!createOpen) {
+
+
+  const handleCreateOpenChange = (open: boolean) => {
+    setCreateOpen(open)
+  
+    if (!open) {
       setEditingNotification(null)
     }
-  }, [createOpen])
+  }
 
   /* =======================================================
      RENDER
@@ -1904,14 +1906,7 @@ export default function AnnouncementsPage() {
 
       <Sheet
         open={createOpen}
-        onOpenChange={(open) => {
-          setCreateOpen(open)
-
-          if (!open) {
-            setEditingNotification(null)
-            resetForm()
-          }
-        }}
+       onOpenChange={handleCreateOpenChange}
       >
         <SheetContent
           side="right"

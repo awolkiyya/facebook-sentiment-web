@@ -1,29 +1,26 @@
 import { useMutation } from "@tanstack/react-query";
-import { authService } from "@/services/auth.service";
-import { useDispatch } from "react-redux";
 import { useRouter } from "next/navigation";
 
+import { authService } from "@/services/auth.service";
+
+interface UpdatePasswordPayload {
+  current_password: string;
+  new_password: string;
+  new_password_confirmation: string;
+}
+
 export const useUpdatePassword = () => {
-  const dispatch = useDispatch();
   const router = useRouter();
 
-  return useMutation<
-    any,
-    any,
-    {
-      current_password: string;
-      new_password: string;
-      new_password_confirmation: string;
-    }
-  >({
-    mutationFn: authService.updatePassword,
+  return useMutation<unknown, Error, UpdatePasswordPayload>({
+    mutationFn: (payload) => authService.updatePassword(payload),
 
-    onSuccess: () => {
-      // optional: security improvement → force logout after password change
-      authService.logout();
-
-      // optional redirect
-      router.push("/auth/login");
+    onSuccess: async () => {
+      try {
+        await authService.logout();
+      } finally {
+        router.push("/auth/login");
+      }
     },
   });
 };

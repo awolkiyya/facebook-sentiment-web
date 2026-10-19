@@ -1,3 +1,4 @@
+
 "use client"
 
 import {
@@ -13,10 +14,8 @@ import {
   Video,
 } from "lucide-react"
 
-import {
-  useMemo,
-  useState,
-} from "react"
+import Image from "next/image"
+import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -32,10 +31,18 @@ import {
 import type {
   FacebookPost,
   FacebookPostAttachment,
-  Sentiment,
-} from "@/types/facebook-post"
+} from "@/types/facebook/post"
+
 
 import { FacebookCommentPreview } from "./facebook-comment-preview"
+import { SentimentLabel } from "@/types/facebook/common"
+import { UiComment } from "@/types/facebook/post-comments-analytics"
+
+/*
+|--------------------------------------------------------------------------
+| PROPS
+|--------------------------------------------------------------------------
+*/
 
 interface FacebookPostCardProps {
   post: FacebookPost
@@ -44,11 +51,13 @@ interface FacebookPostCardProps {
   onViewComments: () => void
 }
 
-/* ================================================================
-   SENTIMENT
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| SENTIMENT STYLES
+|--------------------------------------------------------------------------
+*/
 
-const SENTIMENT_STYLES: Record<Sentiment, string> = {
+const SENTIMENT_STYLES: Record<SentimentLabel, string> = {
   positive:
     "border-emerald-200 bg-emerald-50 text-emerald-700",
 
@@ -59,13 +68,13 @@ const SENTIMENT_STYLES: Record<Sentiment, string> = {
     "border-red-200 bg-red-50 text-red-700",
 }
 
-/* ================================================================
-   HELPERS
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| HELPERS
+|--------------------------------------------------------------------------
+*/
 
-function formatCompactNumber(
-  value: number,
-): string {
+function formatCompactNumber(value: number): string {
   return new Intl.NumberFormat("en", {
     notation: "compact",
     maximumFractionDigits: 1,
@@ -73,12 +82,16 @@ function formatCompactNumber(
 }
 
 function formatDateTime(
-  value: string,
+  value: string | null | undefined,
 ): string {
+  if (!value) {
+    return "Date unavailable"
+  }
+
   const date = new Date(value)
 
   if (Number.isNaN(date.getTime())) {
-    return value
+    return "Date unavailable"
   }
 
   return new Intl.DateTimeFormat("en", {
@@ -87,54 +100,41 @@ function formatDateTime(
   }).format(date)
 }
 
-function getAttachmentLabel(
-  attachment: FacebookPostAttachment,
+function getSentimentClass(
+  sentiment: SentimentLabel | null | undefined,
 ): string {
-  switch (attachment.media_type) {
-    case "image":
-      return "Photo"
+  return sentiment
+    ? SENTIMENT_STYLES[sentiment]
+    : "border-slate-200 bg-slate-50 text-slate-600"
+}
 
-    case "video":
-      return "Video"
-
-    case "album":
-      return "Album"
-
-    case "link":
-      return "Link"
-
-    case "unavailable":
-      return "Media unavailable"
-
-    default:
-      return "Attachment"
+/**
+ * Adapt the backend's API comment model to the existing
+ * UI comment model consumed by FacebookCommentPreview.
+ */
+function toUiComment(
+  comment: FacebookPost["top_comments"][number],
+): UiComment {
+  return {
+    id: comment.id,
+    author: comment.author.name ?? "Unknown user",
+    message: comment.message ?? "",
+    publishedAt: comment.commented_at,
+    sentiment: comment.ai_analysis?.sentiment.label ?? null,
+    sentimentConfidence:
+      comment.ai_analysis?.sentiment.confidence ?? null,
+    language: comment.ai_analysis?.language ?? null,
+    likes: comment.engagement.likes,
+    permalinkUrl: comment.permalink_url,
+    analyzedAt: comment.ai_analysis?.analyzed_at ?? null,
   }
 }
 
-function getAttachmentIcon(
-  attachment: FacebookPostAttachment,
-) {
-  switch (attachment.media_type) {
-    case "image":
-      return ImageIcon
-
-    case "video":
-      return Video
-
-    case "album":
-      return ImageIcon
-
-    case "link":
-      return LinkIcon
-
-    default:
-      return FileImage
-  }
-}
-
-/* ================================================================
-   IMAGE COMPONENT
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| ATTACHMENT IMAGE
+|--------------------------------------------------------------------------
+*/
 
 interface AttachmentImageProps {
   attachment: FacebookPostAttachment
@@ -147,13 +147,14 @@ function AttachmentImage({
   className = "",
   alt = "Facebook post attachment",
 }: AttachmentImageProps) {
-  const [hasError, setHasError] =
-    useState(false)
+  const [hasError, setHasError] = useState(false)
 
   const imageUrl =
     attachment.thumbnail_url ??
     attachment.media_url ??
-    attachment.url
+    (attachment.media_type === "image"
+      ? attachment.url
+      : null)
 
   if (!imageUrl || hasError) {
     return (
@@ -172,19 +173,23 @@ function AttachmentImage({
   }
 
   return (
-    <img
+    <Image
       src={imageUrl}
       alt={alt}
-      loading="lazy"
+      fill
+      sizes="(max-width: 768px) 100vw, 600px"
+      unoptimized
       onError={() => setHasError(true)}
-      className={`h-full w-full object-cover ${className}`}
+      className={`object-cover ${className}`}
     />
   )
 }
 
-/* ================================================================
-   SINGLE IMAGE
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| SINGLE IMAGE
+|--------------------------------------------------------------------------
+*/
 
 function SingleImageAttachment({
   attachment,
@@ -192,8 +197,7 @@ function SingleImageAttachment({
   attachment: FacebookPostAttachment
 }) {
   const aspectClass =
-    attachment.width &&
-    attachment.height
+    attachment.width && attachment.height
       ? attachment.width >= attachment.height
         ? "aspect-video"
         : "aspect-[4/5]"
@@ -201,49 +205,40 @@ function SingleImageAttachment({
 
   return (
     <div
-      className={`mt-5 overflow-hidden rounded-xl border bg-muted ${aspectClass}`}
+      className={`relative mt-5 overflow-hidden rounded-xl border bg-muted ${aspectClass}`}
     >
       <AttachmentImage
         attachment={attachment}
-        alt={
-          attachment.title ??
-          "Facebook post photo"
-        }
+        alt={attachment.title ?? "Facebook post photo"}
       />
     </div>
   )
 }
 
-/* ================================================================
-   VIDEO
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| VIDEO
+|--------------------------------------------------------------------------
+*/
 
 function VideoAttachment({
   attachment,
 }: {
   attachment: FacebookPostAttachment
 }) {
-  const [hasError, setHasError] =
-    useState(false)
+  const [hasError, setHasError] = useState(false)
 
-  const videoUrl =
-    attachment.media_url ??
-    attachment.url
-
-  const thumbnailUrl =
-    attachment.thumbnail_url
+  const videoUrl = attachment.media_url ?? attachment.url
+  const thumbnailUrl = attachment.thumbnail_url
 
   if (!videoUrl || hasError) {
     return (
-      <div className="mt-5 flex aspect-video items-center justify-center overflow-hidden rounded-xl border bg-muted">
+      <div className="relative mt-5 flex aspect-video items-center justify-center overflow-hidden rounded-xl border bg-muted">
         {thumbnailUrl ? (
-          <div className="relative h-full w-full">
+          <>
             <AttachmentImage
               attachment={attachment}
-              alt={
-                attachment.title ??
-                "Facebook video"
-              }
+              alt={attachment.title ?? "Facebook video"}
             />
 
             <div className="absolute inset-0 flex items-center justify-center bg-black/20">
@@ -251,7 +246,7 @@ function VideoAttachment({
                 <Play className="ml-0.5 h-6 w-6 fill-current" />
               </div>
             </div>
-          </div>
+          </>
         ) : (
           <div className="flex flex-col items-center gap-2 text-muted-foreground">
             <Video className="h-8 w-8" />
@@ -274,21 +269,19 @@ function VideoAttachment({
         className="block max-h-[600px] w-full"
         onError={() => setHasError(true)}
       >
-        <source
-          src={videoUrl}
-          type="video/mp4"
-        />
+        <source src={videoUrl} />
 
-        Your browser does not support
-        video playback.
+        Your browser does not support video playback.
       </video>
     </div>
   )
 }
 
-/* ================================================================
-   ALBUM
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| ALBUM
+|--------------------------------------------------------------------------
+*/
 
 function AlbumAttachment({
   attachment,
@@ -298,74 +291,50 @@ function AlbumAttachment({
   const children = attachment.children ?? []
 
   if (children.length === 0) {
-    return (
-      <SingleImageAttachment
-        attachment={attachment}
-      />
-    )
+    return <SingleImageAttachment attachment={attachment} />
   }
 
-  const visibleChildren =
-    children.slice(0, 4)
-
-  const remainingCount =
-    children.length - visibleChildren.length
+  const visibleChildren = children.slice(0, 4)
+  const remainingCount = children.length - visibleChildren.length
 
   return (
     <div className="mt-5 overflow-hidden rounded-xl border bg-muted">
-      <div
-        className={
-          visibleChildren.length === 1
-            ? "grid"
-            : visibleChildren.length === 2
-              ? "grid grid-cols-2"
-              : "grid grid-cols-2"
-        }
-      >
-        {visibleChildren.map(
-          (child, index) => {
-            const isLastVisible =
-              index ===
-              visibleChildren.length - 1
+      <div className="grid grid-cols-2">
+        {visibleChildren.map((child, index) => {
+          const showRemaining =
+            index === visibleChildren.length - 1 &&
+            remainingCount > 0
 
-            const showRemaining =
-              isLastVisible &&
-              remainingCount > 0
+          return (
+            <div
+              key={child.id}
+              className={`relative aspect-square overflow-hidden ${
+                visibleChildren.length > 2 && index < 2
+                  ? "border-b"
+                  : ""
+              } ${
+                index % 2 === 0 && visibleChildren.length > 1
+                  ? "border-r"
+                  : ""
+              }`}
+            >
+              <AttachmentImage
+                attachment={child}
+                alt={
+                  child.title ?? `Album photo ${index + 1}`
+                }
+              />
 
-            return (
-              <div
-                key={child.id}
-                className={`relative aspect-square overflow-hidden ${
-                  visibleChildren.length > 2 &&
-                  index < 2
-                    ? "border-b"
-                    : ""
-                } ${
-                  index % 2 === 0 &&
-                  visibleChildren.length > 1
-                    ? "border-r"
-                    : ""
-                }`}
-              >
-                <AttachmentImage
-                  attachment={child}
-                  alt={
-                    child.title ??
-                    `Album photo ${index + 1}`
-                  }
-                />
-
-                {showRemaining && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                    <span className="text-lg font-semibold text-white">
-                      +{remainingCount}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )
-          },
-        )}
+              {showRemaining && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                  <span className="text-lg font-semibold text-white">
+                    +{remainingCount}
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {attachment.title && (
@@ -379,9 +348,11 @@ function AlbumAttachment({
   )
 }
 
-/* ================================================================
-   LINK ATTACHMENT
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| LINK ATTACHMENT
+|--------------------------------------------------------------------------
+*/
 
 function LinkAttachment({
   attachment,
@@ -389,8 +360,7 @@ function LinkAttachment({
   attachment: FacebookPostAttachment
 }) {
   const targetUrl =
-    attachment.target_url ??
-    attachment.url
+    attachment.target.url ?? attachment.url
 
   if (!targetUrl) {
     return null
@@ -404,13 +374,10 @@ function LinkAttachment({
       className="mt-5 block overflow-hidden rounded-xl border bg-muted/20 transition-colors hover:bg-muted/40"
     >
       {attachment.thumbnail_url && (
-        <div className="aspect-[2/1] overflow-hidden bg-muted">
+        <div className="relative aspect-[2/1] overflow-hidden bg-muted">
           <AttachmentImage
             attachment={attachment}
-            alt={
-              attachment.title ??
-              "Shared link"
-            }
+            alt={attachment.title ?? "Shared link"}
           />
         </div>
       )}
@@ -444,15 +411,20 @@ function LinkAttachment({
   )
 }
 
-/* ================================================================
-   UNAVAILABLE ATTACHMENT
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| UNAVAILABLE ATTACHMENT
+|--------------------------------------------------------------------------
+*/
 
 function UnavailableAttachment({
   attachment,
 }: {
   attachment: FacebookPostAttachment
 }) {
+  const targetUrl =
+    attachment.target.url ?? attachment.url
+
   return (
     <div className="mt-5 flex items-center gap-3 rounded-xl border border-dashed bg-muted/20 p-4">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -465,33 +437,35 @@ function UnavailableAttachment({
         </p>
 
         <p className="mt-0.5 text-xs text-muted-foreground">
-          This Facebook attachment is no
-          longer available.
+          This Facebook attachment is no longer available.
         </p>
       </div>
 
-      {attachment.target_url && (
-        <a
-          href={attachment.target_url}
-          target="_blank"
-          rel="noopener noreferrer"
+      {targetUrl && (
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
           className="ml-auto shrink-0"
         >
-          <Button
-            variant="outline"
-            size="sm"
+          <a
+            href={targetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
           >
             Open
-          </Button>
-        </a>
+          </a>
+        </Button>
       )}
     </div>
   )
 }
 
-/* ================================================================
-   ATTACHMENT RENDERER
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| ATTACHMENT RENDERER
+|--------------------------------------------------------------------------
+*/
 
 function PostAttachment({
   attachment,
@@ -500,88 +474,57 @@ function PostAttachment({
 }) {
   switch (attachment.media_type) {
     case "image":
-      return (
-        <SingleImageAttachment
-          attachment={attachment}
-        />
-      )
+      return <SingleImageAttachment attachment={attachment} />
 
     case "video":
-      return (
-        <VideoAttachment
-          attachment={attachment}
-        />
-      )
+      return <VideoAttachment attachment={attachment} />
 
     case "album":
-      return (
-        <AlbumAttachment
-          attachment={attachment}
-        />
-      )
+      return <AlbumAttachment attachment={attachment} />
 
     case "link":
-      return (
-        <LinkAttachment
-          attachment={attachment}
-        />
-      )
+      return <LinkAttachment attachment={attachment} />
 
     case "unavailable":
-      return (
-        <UnavailableAttachment
-          attachment={attachment}
-        />
-      )
+      return <UnavailableAttachment attachment={attachment} />
 
     default:
       return null
   }
 }
 
-/* ================================================================
-   ATTACHMENTS
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| POST ATTACHMENTS
+|--------------------------------------------------------------------------
+*/
 
 function PostAttachments({
   attachments,
 }: {
   attachments: FacebookPostAttachment[]
 }) {
-  const topLevelAttachments =
-    useMemo(
-      () =>
-        attachments.filter(
-          (attachment) =>
-            attachment.media_type !==
-              undefined &&
-            attachment.media_type !==
-              null,
-        ),
-      [attachments],
-    )
-
-  if (topLevelAttachments.length === 0) {
+  if (attachments.length === 0) {
     return null
   }
 
   return (
     <div className="space-y-4">
-      {topLevelAttachments.map(
-        (attachment) => (
-          <PostAttachment
-            key={attachment.id}
-            attachment={attachment}
-          />
-        ),
-      )}
+      {attachments.map((attachment) => (
+        <PostAttachment
+          key={attachment.id}
+          attachment={attachment}
+        />
+      ))}
     </div>
   )
 }
 
-/* ================================================================
-   CARD
-================================================================ */
+/*
+|--------------------------------------------------------------------------
+| FACEBOOK POST CARD
+|--------------------------------------------------------------------------
+*/
 
 export function FacebookPostCard({
   post,
@@ -589,77 +532,65 @@ export function FacebookPostCard({
   onToggleComments,
   onViewComments,
 }: FacebookPostCardProps) {
-  const hasMessage =
-    Boolean(post.message?.trim())
+  const hasMessage = Boolean(post.message?.trim())
+  const hasAttachments = post.attachments.length > 0
 
-  const hasAttachments =
-    post.attachments.length > 0
+  const sentiment =
+    post.ai_analysis?.sentiment?.label ?? null
 
-  const hasSentiment =
-    Boolean(post.sentiment)
+  const topic =
+    post.ai_analysis?.topic?.name ?? null
 
-  const hasTopic =
-    Boolean(
-      post.topic &&
-        post.topic !==
-          "Uncategorized",
-    )
+  const hasSentiment = Boolean(sentiment)
 
-  const hasAIAnalysis =
-    hasSentiment || hasTopic
+  const hasTopic = Boolean(
+    topic && topic !== "Uncategorized",
+  )
 
-  const sentimentStyle =
-    SENTIMENT_STYLES[
-      post.sentiment
-    ]
+  const hasAIAnalysis = hasSentiment || hasTopic
+
+  const sentimentStyle = getSentimentClass(sentiment)
+
+  const comments = post.top_comments ?? []
+
+  const reactionCount = post.engagement.likes
+  const commentCount = post.engagement.comments
+  const shareCount = post.engagement.shares
 
   return (
     <Card className="overflow-hidden shadow-none">
       <CardContent className="p-0">
-        {/* ======================================================
-            MAIN CONTENT
-        ====================================================== */}
+        {/* MAIN CONTENT */}
 
         <div className="p-5 sm:p-6">
-          {/* ====================================================
-              POST HEADER
-          ==================================================== */}
+          {/* POST HEADER */}
 
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 gap-3">
-              {/* Page Avatar */}
-
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-muted text-sm font-semibold">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-muted text-sm font-semibold"
+                aria-label="Facebook page"
+              >
                 AC
               </div>
 
-              {/* Page Information */}
-
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">
-                  {post.author ||
-                    "Adama City Administration"}
+                  Adama City Administration
                 </p>
 
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                  <span>
-                    {formatDateTime(
-                      post.publishedAt,
-                    )}
-                  </span>
+                  <time dateTime={post.published_at ?? undefined}>
+                    {formatDateTime(post.published_at)}
+                  </time>
 
                   {hasAttachments && (
                     <>
-                      <span aria-hidden>
-                        •
-                      </span>
+                      <span aria-hidden="true">•</span>
 
                       <span>
-                        {
-                          post.attachments.length
-                        }{" "}
-                        {post.attachments
-                          .length === 1
+                        {post.attachments.length}{" "}
+                        {post.attachments.length === 1
                           ? "attachment"
                           : "attachments"}
                       </span>
@@ -669,9 +600,7 @@ export function FacebookPostCard({
               </div>
             </div>
 
-            {/* ==================================================
-                ACTION MENU
-            ================================================== */}
+            {/* ACTION MENU */}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -685,16 +614,11 @@ export function FacebookPostCard({
                 </Button>
               </DropdownMenuTrigger>
 
-              <DropdownMenuContent
-                align="end"
-                className="w-52"
-              >
-                {post.permalinkUrl && (
+              <DropdownMenuContent align="end" className="w-52">
+                {post.permalink_url && (
                   <DropdownMenuItem asChild>
                     <a
-                      href={
-                        post.permalinkUrl
-                      }
+                      href={post.permalink_url}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -704,11 +628,7 @@ export function FacebookPostCard({
                   </DropdownMenuItem>
                 )}
 
-                <DropdownMenuItem
-                  onClick={
-                    onToggleComments
-                  }
-                >
+                <DropdownMenuItem onClick={onToggleComments}>
                   <MessageCircle className="mr-2 h-4 w-4" />
 
                   {isCommentsExpanded
@@ -716,23 +636,18 @@ export function FacebookPostCard({
                     : "Show comments"}
                 </DropdownMenuItem>
 
-                <DropdownMenuItem
-                  onClick={onViewComments}
-                >
+                <DropdownMenuItem onClick={onViewComments}>
                   <MessageCircle className="mr-2 h-4 w-4" />
-
                   View all comments
                 </DropdownMenuItem>
 
-                {post.permalinkUrl && (
+                {post.permalink_url && (
                   <>
                     <DropdownMenuSeparator />
 
                     <DropdownMenuItem asChild>
                       <a
-                        href={
-                          post.permalinkUrl
-                        }
+                        href={post.permalink_url}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
@@ -746,33 +661,23 @@ export function FacebookPostCard({
             </DropdownMenu>
           </div>
 
-          {/* ====================================================
-              POST MESSAGE
-          ==================================================== */}
+          {/* POST MESSAGE */}
 
           {hasMessage && (
             <div className="mt-5">
-              <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
+              <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
                 {post.message}
               </p>
             </div>
           )}
 
-          {/* ====================================================
-              ATTACHMENTS
-          ==================================================== */}
+          {/* ATTACHMENTS */}
 
           {hasAttachments && (
-            <PostAttachments
-              attachments={
-                post.attachments
-              }
-            />
+            <PostAttachments attachments={post.attachments} />
           )}
 
-          {/* ====================================================
-              AI ANALYSIS
-          ==================================================== */}
+          {/* AI ANALYSIS */}
 
           {hasAIAnalysis && (
             <div className="mt-5 rounded-xl border bg-muted/20 p-4">
@@ -787,157 +692,108 @@ export function FacebookPostCard({
                   </p>
                 </div>
 
-                {post.sentiment && (
+                {sentiment && (
                   <span
-                    className={`rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${sentimentStyle}`}
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${sentimentStyle}`}
                   >
-                    {post.sentiment}
+                    {sentiment}
                   </span>
                 )}
               </div>
 
               <div className="mt-3 text-sm leading-6 text-muted-foreground">
-                {hasSentiment &&
-                  hasTopic && (
-                    <p>
-                      Public response is{" "}
-                      <span className="font-medium text-foreground">
-                        {post.sentiment}
-                      </span>{" "}
-                      around the topic of{" "}
-                      <span className="font-medium text-foreground">
-                        {post.topic}
-                      </span>
-                      .
-                    </p>
-                  )}
+                {hasSentiment && hasTopic && (
+                  <p>
+                    Public response is{" "}
+                    <span className="font-medium text-foreground">
+                      {sentiment}
+                    </span>{" "}
+                    around the topic of{" "}
+                    <span className="font-medium text-foreground">
+                      {topic}
+                    </span>
+                    .
+                  </p>
+                )}
 
-                {hasSentiment &&
-                  !hasTopic && (
-                    <p>
-                      Public response is{" "}
-                      <span className="font-medium text-foreground">
-                        {post.sentiment}
-                      </span>
-                      .
-                    </p>
-                  )}
+                {hasSentiment && !hasTopic && (
+                  <p>
+                    Public response is{" "}
+                    <span className="font-medium text-foreground">
+                      {sentiment}
+                    </span>
+                    .
+                  </p>
+                )}
 
-                {!hasSentiment &&
-                  hasTopic && (
-                    <p>
-                      The detected topic is{" "}
-                      <span className="font-medium text-foreground">
-                        {post.topic}
-                      </span>
-                      .
-                    </p>
-                  )}
+                {!hasSentiment && hasTopic && (
+                  <p>
+                    The detected topic is{" "}
+                    <span className="font-medium text-foreground">
+                      {topic}
+                    </span>
+                    .
+                  </p>
+                )}
               </div>
             </div>
           )}
 
-          {/* ====================================================
-              AI METADATA
-          ==================================================== */}
+          {/* AI METADATA */}
 
-          {(
-            post.sentiment ||
-            post.language ||
-            hasTopic
-          ) && (
+          {(sentiment || hasTopic) && (
             <div className="mt-4 flex flex-wrap gap-2">
-              {post.sentiment && (
+              {sentiment && (
                 <span
                   className={`rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${sentimentStyle}`}
                 >
-                  {post.sentiment}
-                </span>
-              )}
-
-              {post.language && (
-                <span className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                  {post.language}
+                  {sentiment}
                 </span>
               )}
 
               {hasTopic && (
                 <span className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                  {post.topic}
+                  {topic}
                 </span>
               )}
             </div>
           )}
 
-          {/* ====================================================
-              ENGAGEMENT
-          ==================================================== */}
+          {/* ENGAGEMENT */}
 
           <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3 border-t pt-4">
-            {/* Likes */}
-
             <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
               <Heart className="h-4 w-4" />
 
-              <span>
-                {formatCompactNumber(
-                  post.reactions,
-                )}
-              </span>
+              <span>{formatCompactNumber(reactionCount)}</span>
 
-              <span className="sr-only">
-                reactions
-              </span>
+              <span className="sr-only">likes</span>
             </span>
-
-            {/* Comments */}
 
             <button
               type="button"
-              onClick={
-                onToggleComments
-              }
+              onClick={onToggleComments}
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-              aria-expanded={
-                isCommentsExpanded
-              }
+              aria-expanded={isCommentsExpanded}
             >
               <MessageCircle className="h-4 w-4" />
 
-              <span>
-                {formatCompactNumber(
-                  post.comments,
-                )}
-              </span>
+              <span>{formatCompactNumber(commentCount)}</span>
 
-              <span className="sr-only">
-                comments
-              </span>
+              <span className="sr-only">comments</span>
             </button>
-
-            {/* Shares */}
 
             <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
               <Share2 className="h-4 w-4" />
 
-              <span>
-                {formatCompactNumber(
-                  post.shares,
-                )}
-              </span>
+              <span>{formatCompactNumber(shareCount)}</span>
 
-              <span className="sr-only">
-                shares
-              </span>
+              <span className="sr-only">shares</span>
             </span>
-
-            {/* View comments */}
 
             <button
               type="button"
-              onClick={
-                onViewComments
-              }
+              onClick={onViewComments}
               className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-foreground transition-colors hover:text-primary"
             >
               View all comments
@@ -947,9 +803,7 @@ export function FacebookPostCard({
           </div>
         </div>
 
-        {/* ======================================================
-            COMMENT PREVIEWS
-        ====================================================== */}
+        {/* COMMENT PREVIEWS */}
 
         {isCommentsExpanded && (
           <div className="border-t bg-muted/10 p-5 sm:p-6">
@@ -964,27 +818,21 @@ export function FacebookPostCard({
                 </p>
               </div>
 
-              {post.comments > 0 && (
+              {commentCount > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  {formatCompactNumber(
-                    post.comments,
-                  )}{" "}
-                  total
+                  {formatCompactNumber(commentCount)} total
                 </span>
               )}
             </div>
 
-            {post.topComments.length >
-            0 ? (
+            {comments.length > 0 ? (
               <div className="space-y-2">
-                {post.topComments.map(
-                  (comment) => (
-                    <FacebookCommentPreview
-                      key={comment.id}
-                      comment={comment}
-                    />
-                  ),
-                )}
+                {comments.map((comment) => (
+                  <FacebookCommentPreview
+                    key={comment.id}
+                    comment={toUiComment(comment)}
+                  />
+                ))}
               </div>
             ) : (
               <div className="rounded-lg border border-dashed bg-background p-6 text-center">
@@ -995,9 +843,7 @@ export function FacebookPostCard({
                 </p>
 
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Comments have not been
-                  synchronized for this
-                  post yet.
+                  Comments have not been synchronized for this post yet.
                 </p>
               </div>
             )}

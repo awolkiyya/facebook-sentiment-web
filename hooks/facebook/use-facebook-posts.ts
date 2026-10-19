@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useCallback, useState } from "react"
@@ -43,52 +44,25 @@ export const useFacebookPosts = () => {
   |--------------------------------------------------------------------------
   */
 
-  const [posts, setPosts] =
-    useState<FacebookPost[]>([])
+  const [posts, setPosts] = useState<FacebookPost[]>([])
 
   const [pagination, setPagination] =
-    useState<FacebookPostsPagination>(
-      DEFAULT_PAGINATION,
-    )
+    useState<FacebookPostsPagination>(DEFAULT_PAGINATION)
 
-  /*
-   * Initial / replacement loading.
-   *
-   * Used by:
-   * - initial page load
-   * - refresh
-   * - changing the complete result set
-   */
-  const [isLoading, setIsLoading] =
-    useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
-  /*
-   * Next-page loading.
-   *
-   * Used only by infinite scrolling.
-   */
-  const [isLoadingMore, setIsLoadingMore] =
-    useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
 
-  /*
-   * Facebook/Meta synchronization.
-   */
-  const [isSyncing, setIsSyncing] =
-    useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  const [isFindingPost, setIsFindingPost] = useState(false)
 
   /*
   |--------------------------------------------------------------------------
   | Get Posts
   |--------------------------------------------------------------------------
   |
-  | This method REPLACES the current collection.
-  |
-  | Example:
-  |
-  | page 1 -> [1 ... 20]
-  |
-  | Calling getPosts(page: 1) again replaces the
-  | existing posts instead of appending them.
+  | Replaces the current collection and pagination metadata.
   |
   */
 
@@ -108,36 +82,21 @@ export const useFacebookPosts = () => {
 
         if (!response.success) {
           throw new Error(
-            response.message ||
-              "Unable to load Facebook posts.",
+            response.message || "Unable to load Facebook posts.",
           )
         }
 
-        /*
-         * Replace the current collection.
-         */
-        setPosts(
-          response.data.posts,
-        )
-
-        /*
-         * Replace pagination metadata.
-         */
-        setPagination(
-          response.data.pagination,
-        )
+        setPosts(response.data.posts)
+        setPagination(response.data.pagination)
 
         return response.data
       } catch (error) {
-        toast.error(
-          "Unable to load Facebook posts",
-          {
-            description:
-              error instanceof Error
-                ? error.message
-                : "Please try again later.",
-          },
-        )
+        toast.error("Unable to load Facebook posts", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Please try again later.",
+        })
 
         throw error
       } finally {
@@ -152,59 +111,24 @@ export const useFacebookPosts = () => {
   | Load More Posts
   |--------------------------------------------------------------------------
   |
-  | This method is specifically for infinite scrolling.
-  |
-  | It:
-  |
-  | 1. Checks whether another page exists.
-  | 2. Prevents duplicate requests.
-  | 3. Requests the next page.
-  | 4. Appends the new posts.
-  | 5. Updates pagination metadata.
+  | Loads and appends the next page without duplicating post IDs.
   |
   */
 
   const loadMorePosts = useCallback(
-    async (
-      facebookPageId: string,
-    ) => {
-      /*
-      |--------------------------------------------------------------------------
-      | Prevent duplicate requests
-      |--------------------------------------------------------------------------
-      */
-
-      if (isLoadingMore) {
+    async (facebookPageId: string) => {
+      if (isLoadingMore || isLoading || isFindingPost) {
         return
       }
 
-      /*
-      |--------------------------------------------------------------------------
-      | Determine whether another page exists
-      |--------------------------------------------------------------------------
-      */
+      const currentPage = pagination.current_page
+      const lastPage = pagination.last_page
 
-      const currentPage =
-        pagination.current_page
-
-      const lastPage =
-        pagination.last_page
-
-      if (
-        currentPage >=
-        lastPage
-      ) {
+      if (currentPage >= lastPage) {
         return
       }
 
-      /*
-      |--------------------------------------------------------------------------
-      | Next page
-      |--------------------------------------------------------------------------
-      */
-
-      const nextPage =
-        currentPage + 1
+      const nextPage = currentPage + 1
 
       try {
         setIsLoadingMore(true)
@@ -214,10 +138,8 @@ export const useFacebookPosts = () => {
             facebookPageId,
             {
               page: nextPage,
-
               per_page:
-                pagination.per_page ||
-                DEFAULT_PER_PAGE,
+                pagination.per_page || DEFAULT_PER_PAGE,
             },
           )
 
@@ -228,76 +150,30 @@ export const useFacebookPosts = () => {
           )
         }
 
-        const nextPosts =
-          response.data.posts
+        const nextPosts = response.data.posts
 
-        /*
-        |--------------------------------------------------------------------------
-        | Append safely
-        |--------------------------------------------------------------------------
-        |
-        | Avoid duplicate local post IDs.
-        |
-        | This protects against:
-        |
-        | - repeated observer events
-        | - backend changes between requests
-        | - accidental duplicate pages
-        |
-        */
+        setPosts((currentPosts) => {
+          const existingIds = new Set(
+            currentPosts.map((post) => post.id),
+          )
 
-        setPosts(
-          (currentPosts) => {
-            const existingIds =
-              new Set(
-                currentPosts.map(
-                  (post) =>
-                    post.id,
-                ),
-              )
+          const uniqueNextPosts = nextPosts.filter(
+            (post) => !existingIds.has(post.id),
+          )
 
-            const uniqueNextPosts =
-              nextPosts.filter(
-                (post) =>
-                  !existingIds.has(
-                    post.id,
-                  ),
-              )
+          return [...currentPosts, ...uniqueNextPosts]
+        })
 
-            return [
-              ...currentPosts,
-              ...uniqueNextPosts,
-            ]
-          },
-        )
-
-        /*
-        |--------------------------------------------------------------------------
-        | Update pagination
-        |--------------------------------------------------------------------------
-        |
-        | IMPORTANT:
-        |
-        | Use the pagination returned by the API
-        | rather than manually calculating it.
-        |
-        */
-
-        setPagination(
-          response.data.pagination,
-        )
+        setPagination(response.data.pagination)
 
         return response.data
       } catch (error) {
-        toast.error(
-          "Unable to load more Facebook posts",
-          {
-            description:
-              error instanceof Error
-                ? error.message
-                : "Please try again later.",
-          },
-        )
+        toast.error("Unable to load more Facebook posts", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Please try again later.",
+        })
 
         throw error
       } finally {
@@ -306,6 +182,8 @@ export const useFacebookPosts = () => {
     },
     [
       isLoadingMore,
+      isLoading,
+      isFindingPost,
       pagination.current_page,
       pagination.last_page,
       pagination.per_page,
@@ -314,45 +192,158 @@ export const useFacebookPosts = () => {
 
   /*
   |--------------------------------------------------------------------------
-  | Has More Posts
+  | Find Post by ID
   |--------------------------------------------------------------------------
   |
-  | Used by the IntersectionObserver on the posts page.
+  | 1. Searches already loaded posts.
+  | 2. Requests additional pages when necessary.
+  | 3. Stops when the post is found or the final page is reached.
   |
-  | Example:
-  |
-  | current_page = 1
-  | last_page    = 38
-  |
-  | hasMorePosts = true
-  |
-  | When:
-  |
-  | current_page = 38
-  | last_page    = 38
-  |
-  | hasMorePosts = false
+  | Note: This searches the posts returned by your existing API.
+  | It does not guarantee discovery of posts excluded by the API.
   |
   */
 
+  const findPostById = useCallback(
+    async (
+      facebookPageId: string,
+      postId: string,
+    ): Promise<FacebookPost | null> => {
+      const normalizedPageId = facebookPageId.trim()
+      const normalizedPostId = postId.trim()
+
+      if (!normalizedPageId || !normalizedPostId) {
+        toast.error("Invalid search", {
+          description:
+            "Facebook page ID and post ID are required.",
+        })
+
+        return null
+      }
+
+      if (isFindingPost || isLoading || isLoadingMore) {
+        return null
+      }
+
+      try {
+        setIsFindingPost(true)
+
+        // Search the currently loaded collection first.
+        const existingPost = posts.find(
+          (post) => post.id === normalizedPostId,
+        )
+
+        if (existingPost) {
+          return existingPost
+        }
+
+        /*
+         * Start with the next page after the currently loaded
+         * collection. Do not replace the user's existing posts.
+         */
+        let nextPage = pagination.current_page + 1
+        let lastPage = pagination.last_page
+
+        while (nextPage <= lastPage) {
+          const response: FacebookPostsResponse =
+            await facebookPostService.getPosts(
+              normalizedPageId,
+              {
+                page: nextPage,
+                per_page:
+                  pagination.per_page || DEFAULT_PER_PAGE,
+              },
+            )
+
+          if (!response.success) {
+            throw new Error(
+              response.message ||
+                "Unable to search Facebook posts.",
+            )
+          }
+
+          const pageData = response.data
+          const pagePosts = pageData.posts
+
+          // Append newly retrieved posts without duplicates.
+          setPosts((currentPosts) => {
+            const existingIds = new Set(
+              currentPosts.map((post) => post.id),
+            )
+
+            const uniquePosts = pagePosts.filter(
+              (post) => !existingIds.has(post.id),
+            )
+
+            return [...currentPosts, ...uniquePosts]
+          })
+
+          setPagination(pageData.pagination)
+
+          // Search the newly fetched page.
+          const matchingPost = pagePosts.find(
+            (post) => post.id === normalizedPostId,
+          )
+
+          if (matchingPost) {
+            return matchingPost
+          }
+
+          lastPage = pageData.pagination.last_page
+          nextPage = pageData.pagination.current_page + 1
+        }
+
+        toast.error("Post not found", {
+          description:
+            `No post with ID "${normalizedPostId}" was found ` +
+            "in the available pages.",
+        })
+
+        return null
+      } catch (error) {
+        toast.error("Unable to find Facebook post", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Please try again later.",
+        })
+
+        throw error
+      } finally {
+        setIsFindingPost(false)
+      }
+    },
+    [
+      posts,
+      pagination.current_page,
+      pagination.last_page,
+      pagination.per_page,
+      isFindingPost,
+      isLoading,
+      isLoadingMore,
+    ],
+  )
+
+  /*
+  |--------------------------------------------------------------------------
+  | Has More Posts
+  |--------------------------------------------------------------------------
+  */
+
   const hasMorePosts =
-    pagination.current_page <
-    pagination.last_page
+    pagination.current_page < pagination.last_page
 
   /*
   |--------------------------------------------------------------------------
   | Sync Posts
   |--------------------------------------------------------------------------
   |
-  | Synchronizes posts from Meta and then reloads
-  | the currently visible page.
+  | Synchronizes posts with Meta and refreshes the current page.
   |
   */
 
   const syncPosts = useCallback(
-    async (
-      facebookPageId: string,
-    ) => {
+    async (facebookPageId: string) => {
       try {
         setIsSyncing(true)
 
@@ -368,46 +359,26 @@ export const useFacebookPosts = () => {
           )
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Refresh the currently visible page
-        |--------------------------------------------------------------------------
-        |
-        | Keep the user's current pagination position.
-        |
-        */
+        await getPosts(facebookPageId, {
+          page: pagination.current_page,
+          per_page:
+            pagination.per_page || DEFAULT_PER_PAGE,
+        })
 
-        await getPosts(
-          facebookPageId,
-          {
-            page:
-              pagination.current_page,
-
-            per_page:
-              pagination.per_page ||
-              DEFAULT_PER_PAGE,
-          },
-        )
-
-        toast.success(
-          "Facebook posts synchronized",
-          {
-            description:
-              `${response.data.posts_for_comment_sync_count} post(s) require comment synchronization.`,
-          },
-        )
+        toast.success("Facebook posts synchronized", {
+          description:
+            `${response.data.posts_for_comment_sync_count} ` +
+            "post(s) require comment synchronization.",
+        })
 
         return response.data
       } catch (error) {
-        toast.error(
-          "Unable to synchronize Facebook posts",
-          {
-            description:
-              error instanceof Error
-                ? error.message
-                : "Please try again later.",
-          },
-        )
+        toast.error("Unable to synchronize Facebook posts", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "Please try again later.",
+        })
 
         throw error
       } finally {
@@ -427,16 +398,11 @@ export const useFacebookPosts = () => {
   |--------------------------------------------------------------------------
   */
 
-  const clearPosts =
-    useCallback(() => {
-      setPosts([])
-
-      setPagination(
-        DEFAULT_PAGINATION,
-      )
-
-      setIsLoadingMore(false)
-    }, [])
+  const clearPosts = useCallback(() => {
+    setPosts([])
+    setPagination(DEFAULT_PAGINATION)
+    setIsLoadingMore(false)
+  }, [])
 
   /*
   |--------------------------------------------------------------------------
@@ -445,29 +411,23 @@ export const useFacebookPosts = () => {
   */
 
   return {
-    /*
-     * Data
-     */
+    // Data
     posts,
     pagination,
 
-    /*
-     * Loading states
-     */
+    // Loading states
     isLoading,
     isLoadingMore,
     isSyncing,
+    isFindingPost,
 
-    /*
-     * Pagination state
-     */
+    // Pagination
     hasMorePosts,
 
-    /*
-     * Operations
-     */
+    // Operations
     getPosts,
     loadMorePosts,
+    findPostById,
     syncPosts,
     clearPosts,
   }

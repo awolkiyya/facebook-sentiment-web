@@ -5,11 +5,7 @@ import {
   ShieldCheck,
   Globe2,
   ScrollText,
-  BrainCircuit,
-  MessageSquareText,
-  Tags,
   Lightbulb,
-  FileBarChart,
   Bell,
   History,
 } from "lucide-react"
@@ -84,6 +80,16 @@ export const NAV_ITEMS: NavItem[] = [
         permission:
           APP_PERMISSIONS.FACEBOOK_SYNC_RUNS_VIEW,
       },
+      // -------------------------------------------------------
+      // AI Insights
+      // -------------------------------------------------------
+
+      {
+        title: "facebook_insights",
+        url: "/or/dashboard/facebook/insights",
+        icon: Lightbulb,
+        permission: APP_PERMISSIONS.FACEBOOK_INSIGHTS_VIEW,
+      },
     ],
   },
 
@@ -92,13 +98,13 @@ export const NAV_ITEMS: NavItem[] = [
   // REPORTS
   // =========================================================
 
-  {
-    title: "reports",
-    url: "/or/dashboard/reports",
-    icon: FileBarChart,
-    permission:
-      APP_PERMISSIONS.REPORTS_VIEW,
-  },
+  // {
+  //   title: "reports",
+  //   url: "/or/dashboard/reports",
+  //   icon: FileBarChart,
+  //   permission:
+  //     APP_PERMISSIONS.REPORTS_VIEW,
+  // },
 
   // =========================================================
   // ADMINISTRATION

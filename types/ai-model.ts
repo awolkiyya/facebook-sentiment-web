@@ -10,6 +10,15 @@ export type AiModelPipeline =
   | "priority"
   | "topic"
 
+
+
+  export type AiModelStatus =
+  | "DRAFT"
+  | "ACTIVE"
+  | "INACTIVE"
+  | "ARCHIVED"
+
+
 /**
  * Matches App\Http\Resources\ModelVersionResource.
  *

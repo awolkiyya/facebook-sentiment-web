@@ -1,4 +1,3 @@
-import type { LanguageCode } from "./common"
 
 export type FacebookPageMonitoringStatus =
   | "monitoring"

@@ -368,12 +368,13 @@ function LogsPage() {
     selectedLogId ?? undefined,
   )
 
-  /* ---------------------------------------------------------------------- */
-  /* Server data                                                             */
-  /* ---------------------------------------------------------------------- */
+ /* ---------------------------------------------------------------------- */
+/* Server data                                                             */
+/* ---------------------------------------------------------------------- */
 
-  const logs = data?.data ?? []
+const EMPTY_LOGS: NonNullable<typeof data>["data"] = []
 
+const logs = data?.data ?? EMPTY_LOGS
   const pagination = data?.meta.pagination
 
   const totalLogs =
@@ -1112,7 +1113,7 @@ function LogsPage() {
 
               {search.trim() && (
                 <Badge variant="outline">
-                  Search: "{search.trim()}"
+                  Search: &quot;{search.trim()}&quot;
                 </Badge>
               )}
 

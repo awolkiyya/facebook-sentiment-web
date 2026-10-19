@@ -51,7 +51,7 @@ export function NavUser({ user }: { user: AuthUser }) {
     logoutMutation.mutate();
   };
 
-  const avatarSrc = user.avatar || "";
+  const avatarSrc =  "";
 
   return (
     <SidebarMenu>

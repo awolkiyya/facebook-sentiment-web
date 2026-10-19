@@ -23,7 +23,6 @@ import {
 
 import {
   useFacebookPostComments,
-  useFacebookPostCommentsAnalytics,
   useFacebookCommentTopics,
   useSyncFacebookComments,
 } from "@/hooks/facebook/use-facebook-comments"
@@ -60,7 +59,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-import { useFacebook } from "@/hooks/useFacebookConnect"
 
 import type { FacebookPost } from "@/types/facebook/post"
 import type { LanguageCode, SentimentLabel } from "@/types/facebook/common"
@@ -68,12 +66,12 @@ import type { LanguageCode, SentimentLabel } from "@/types/facebook/common"
 import { SentimentTimeline } from "@/components/facebook/sentiment-timeline"
 import { FacebookPostSummary } from "@/components/facebook/FacebookPostSummary"
 import {
-  CommentsSection,
   LanguageFilter,
 } from "@/components/facebook/comments-section"
 import { toast } from "sonner"
 import { CommentTopic, FacebookComment } from "@/types/facebook/post-comments-analytics"
 import AiPostInsightPopover from "@/components/facebook/post-comments/ai-post-insight-sheet"
+import { useFacebookPosts } from "@/hooks/facebook/use-facebook-posts"
 
 /* -------------------------------------------------------------------------- */
 /* Mock mode                                                                  */
@@ -244,19 +242,19 @@ function buildMockComments(): UiComment[] {
 
 const MOCK_COMMENTS = buildMockComments()
 
-const MOCK_POST = {
-  id: "mock-post",
-  facebook_post_id: "mock-facebook-post",
-  message:
-    "We are pleased to share the latest development update with the community.",
-  published_at: "2026-09-18T08:00:00",
-  permalink_url: "https://facebook.com/",
-  engagement: {
-    likes: 1250,
-    comments: MOCK_COMMENTS.length,
-    shares: 87,
-  },
-} as FacebookPost
+// const MOCK_POST = {
+//   id: "mock-post",
+//   facebook_post_id: "mock-facebook-post",
+//   message:
+//     "We are pleased to share the latest development update with the community.",
+//   published_at: "2026-09-18T08:00:00",
+//   permalink_url: "https://facebook.com/",
+//   engagement: {
+//     likes: 1250,
+//     comments: MOCK_COMMENTS.length,
+//     shares: 87,
+//   },
+// } as FacebookPost
 
 const MOCK_POST_TOPICS: PostTopic[] = [
   { topic: "Infrastructure & road development", score: 82 },
@@ -297,11 +295,7 @@ function getInitials(name: string) {
     .toUpperCase()
 }
 
-function formatSentiment(value: Sentiment) {
-  if (value === "positive") return "Positive"
-  if (value === "negative") return "Negative"
-  return "Neutral"
-}
+
 
 function getSentimentScore(sentiment: Sentiment) {
   if (sentiment === "positive") return 5
@@ -337,38 +331,6 @@ function mapComment(comment: FacebookComment): UiComment {
   }
 }
 
-/** UI comment -> API FacebookComment shape that <CommentsSection /> expects. */
-function toFacebookComment(
-  comment: UiComment,
-  postId: string,
-): FacebookComment {
-  const language =
-    comment.language === "am" ||
-    comment.language === "om" ||
-    comment.language === "en"
-      ? comment.language
-      : null
-
-  return {
-    id: comment.id,
-    facebookCommentId: comment.id,
-    postId,
-    message: comment.message,
-    author: { name: comment.author },
-    sentiment: comment.sentiment,
-    sentimentConfidence:
-      comment.sentimentConfidence !== null
-        ? comment.sentimentConfidence / 100
-        : null,
-    language,
-    analysisStatus: comment.sentiment ? "completed" : "pending",
-    likeCount: comment.likes,
-    replyCount: 0,
-    publishedAt: comment.publishedAt ?? "",
-    analyzedAt: comment.analyzedAt,
-    permalinkUrl: comment.permalinkUrl,
-  }
-}
 
 /**
  * Pulls the array out of a hook response: PaginatedCommentsResponse
@@ -990,13 +952,16 @@ function TopicsSheet({ topics }: { topics: PostTopic[] }) {
 
 function PostComments() {
   const router = useRouter()
-  const [insightOpen, setInsightOpen] = useState(false);
 
   const params = useParams<{ id: string; postId: string }>()
   const facebookPageId = params.id
   const facebookPostId = params.postId
 
-  const { posts, isLoadingPosts } = useFacebook()
+
+  const [post, setPost] = useState<FacebookPost | null>(null)
+const [isLoadingPost, setIsLoadingPost] = useState(true)
+
+  const { findPostById } = useFacebookPosts()
 
   /* ------------------------------------------------------------------------ */
   /* Data hooks                                                               */
@@ -1009,8 +974,7 @@ function PostComments() {
   })
 
   // Server-side analytics: available for when you move aggregation off the client.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _analyticsQuery = useFacebookPostCommentsAnalytics(facebookPostId)
+   
 
   const topicsQuery = useFacebookCommentTopics(facebookPostId)
   const syncMutation = useSyncFacebookComments(facebookPostId)
@@ -1024,7 +988,7 @@ function PostComments() {
   const [search, setSearch] = useState("")
   const [sentimentFilter, setSentimentFilter] = useState<SentimentFilter>("all")
   const [languageFilter, setLanguageFilter] = useState<LanguageFilter>("all")
-  const [sortMode, setSortMode] = useState<SortMode>("newest")
+  const [sortMode] = useState<SortMode>("newest")
   const [dateRange, setDateRange] = useState<DateRange>("30d")
   const [customFrom, setCustomFrom] = useState("")
   const [customTo, setCustomTo] = useState("")
@@ -1047,16 +1011,45 @@ function PostComments() {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }, [])
 
-  /* ------------------------------------------------------------------------ */
-  /* Post                                                                     */
-  /* ------------------------------------------------------------------------ */
 
-  const realPost = useMemo(
-    () => posts.find((item) => item.id === facebookPostId) ?? null,
-    [posts, facebookPostId],
-  )
+  useEffect(() => {
+    let cancelled = false
+  
+    async function loadPost() {
+      if (!facebookPageId || !facebookPostId) {
+        setPost(null)
+        setIsLoadingPost(false)
+        return
+      }
+  
+      setIsLoadingPost(true)
+  
+      try {
+        const result = await findPostById(facebookPageId,facebookPostId)
+  
+        if (!cancelled) {
+          setPost(result)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPost(null)
+  
+          console.error("Failed to load Facebook post:", error)
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingPost(false)
+        }
+      }
+    }
+  
+    void loadPost()
+  
+    return () => {
+      cancelled = true
+    }
+  }, [facebookPageId, facebookPostId, findPostById])
 
-  const post = USE_MOCK_DATA ? MOCK_POST : realPost
 
   /* ------------------------------------------------------------------------ */
   /* Topics                                                                   */
@@ -1323,51 +1316,8 @@ function PostComments() {
     [analyzedComments],
   )
 
-  /* ------------------------------------------------------------------------ */
-  /* Filtered comments                                                        */
-  /* ------------------------------------------------------------------------ */
+  
 
-  const filteredComments = useMemo(() => {
-    const query = search.trim().toLowerCase()
-
-    const result = periodComments.filter((comment) => {
-      const matchesSearch =
-        !query ||
-        comment.author.toLowerCase().includes(query) ||
-        comment.message.toLowerCase().includes(query)
-
-      const matchesSentiment =
-        sentimentFilter === "all" || comment.sentiment === sentimentFilter
-
-      const matchesLanguage =
-        languageFilter === "all" || comment.language === languageFilter
-
-      return matchesSearch && matchesSentiment && matchesLanguage
-    })
-
-    return [...result].sort((a, b) => {
-      if (sortMode === "most_liked") return b.likes - a.likes
-
-      const dateA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0
-      const dateB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0
-
-      return sortMode === "newest" ? dateB - dateA : dateA - dateB
-    })
-  }, [periodComments, search, sentimentFilter, languageFilter, sortMode])
-
-  /* ------------------------------------------------------------------------ */
-  /* Convert UI comments to Facebook comment shape                            */
-  /* ------------------------------------------------------------------------ */
-
-  const commentsForSection = useMemo(
-    () => uiComments.map((c) => toFacebookComment(c, facebookPostId)),
-    [uiComments, facebookPostId],
-  )
-
-  const filteredCommentsForSection = useMemo(
-    () => filteredComments.map((c) => toFacebookComment(c, facebookPostId)),
-    [filteredComments, facebookPostId],
-  )
 
   /* ------------------------------------------------------------------------ */
   /* Navigation                                                               */
@@ -1446,14 +1396,12 @@ function PostComments() {
               : "Custom range"
 
   const postMessage = post?.message ?? "Post content unavailable."
-  const postDate = post?.published_at ?? null
   const postLikes = post?.engagement?.likes ?? 0
   const postShares = post?.engagement?.shares ?? 0
 
   const hasData = analyzedCount > 0
 
-  const isPostLoading = isLoadingPosts && !post && !USE_MOCK_DATA
-  const isCommentsLoading = !USE_MOCK_DATA && commentsQuery.isLoading
+  const isPostLoading = isLoadingPost && !post && !USE_MOCK_DATA
 
   /* ------------------------------------------------------------------------ */
   /* Render                                                                   */
@@ -1538,7 +1486,7 @@ function PostComments() {
               </CardContent>
             ) : (
               <FacebookPostSummary
-                postDate={postDate}
+                postDate={post!.published_at!}
                 postMessage={postMessage}
                 postLikes={postLikes}
                 totalComments={totalComments}
@@ -1869,7 +1817,7 @@ function PostComments() {
           </section>
 
           {/* Comments */}
-          <CommentsSection
+          {/* <CommentsSection
             comments={commentsForSection}
             filteredComments={filteredCommentsForSection}
             search={search}
@@ -1891,69 +1839,60 @@ function PostComments() {
             formatDate={formatDate}
             formatNumber={formatNumber}
             formatSentiment={formatSentiment}
-          />
+          /> */}
 
           <div className="h-10" />
         </div>
 
-{/* Floating Action Dock */}
-<div className="fixed bottom-5 right-5 z-50 flex flex-col items-center gap-3 sm:bottom-7 sm:right-7">
-  {/* AI Insight */}
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <div className="group relative">
-        <div className="absolute -inset-1 rounded-full bg-primary/20 opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-100" />
+      {/* Floating Action Dock */}
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col items-center gap-3 sm:bottom-7 sm:right-7">
+        {/* AI Insight */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="group relative">
+              <div className="absolute -inset-1 rounded-full bg-primary/20 opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-100" />
 
-        <div className="relative rounded-full border border-border/70 bg-background/90 p-1 shadow-lg shadow-black/10 backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl">
-          <AiPostInsightPopover
-            analytics="Overall public sentiment is slightly positive, although a substantial number of comments express neutral or negative views. Roads and infrastructure are the most frequently mentioned public concern. The city should review reported road problems and prioritize repairs based on their urgency and impact."
-            isLoading={false}
-            isGenerating={false}
-            error={null}
-            preferredLanguage="am"
-            onRefresh={() => {
-              // refreshInsight();
-            }}
-            onGenerateInsight={(language) => {
-              // generateInsight({ language });
-            }}
-            triggerLabel="AI Insight"
-          />
-        </div>
+              <div className="relative rounded-full border border-border/70 bg-background/90 p-1 shadow-lg shadow-black/10 backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl">
+              <AiPostInsightPopover
+                postId={facebookPostId}
+                initialLanguage="en"
+                triggerLabel="AI Insight"
+              />
+              </div>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="left">
+            View AI-powered public insights
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Separator */}
+        {showBackToTop && (
+          <>
+            <div className="h-px w-6 bg-border/80" />
+
+            {/* Back to Top */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  onClick={scrollToTop}
+                  aria-label="Back to top"
+                  className="size-11 rounded-full border-border/70 bg-background/90 text-foreground shadow-lg shadow-black/10 backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary hover:text-primary-foreground hover:shadow-xl"
+                >
+                  <ArrowUp className="size-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+
+              <TooltipContent side="left">
+                Back to top
+              </TooltipContent>
+            </Tooltip>
+          </>
+        )}
       </div>
-    </TooltipTrigger>
-    <TooltipContent side="left">
-      View AI-powered public insights
-    </TooltipContent>
-  </Tooltip>
-
-  {/* Separator */}
-  {showBackToTop && (
-    <>
-      <div className="h-px w-6 bg-border/80" />
-
-      {/* Back to Top */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            size="icon"
-            variant="outline"
-            onClick={scrollToTop}
-            aria-label="Back to top"
-            className="size-11 rounded-full border-border/70 bg-background/90 text-foreground shadow-lg shadow-black/10 backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary hover:text-primary-foreground hover:shadow-xl"
-          >
-            <ArrowUp className="size-4" aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-
-        <TooltipContent side="left">
-          Back to top
-        </TooltipContent>
-      </Tooltip>
-    </>
-  )}
-</div>
 
 
       </div>

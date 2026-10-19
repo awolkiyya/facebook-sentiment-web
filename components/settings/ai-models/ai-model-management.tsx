@@ -506,10 +506,8 @@ function PipelineContent({
             </p>
 
             <p className="mt-1 text-xs text-muted-foreground">
-              Something went wrong while
-              fetching this pipeline's
-              models.
-            </p>
+  Something went wrong while fetching this pipeline&apos;s models.
+</p>
           </div>
 
           <Button

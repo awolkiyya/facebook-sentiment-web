@@ -102,6 +102,18 @@ export const APP_PERMISSIONS = {
     resource: "facebook_pages",
     action: "view",
   },
+  
+
+  /*
+  |--------------------------------------------------------------------------
+  | FACEBOOK SYNC RUNS
+  |--------------------------------------------------------------------------
+  */
+
+  FACEBOOK_SYNC_RUNS_VIEW: {
+    resource: "facebook_sync_runs",
+    action: "view",
+  },
 
 
   /*

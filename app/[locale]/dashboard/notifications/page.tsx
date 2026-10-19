@@ -47,24 +47,22 @@ type UserNotification = Notification & {
  * HELPERS
  * ======================================================= */
 
-function getNotificationIcon(
-  type: NotificationType,
-) {
+function getNotificationIcon(type: NotificationType) {
   switch (type) {
     case "facebook":
-      return MessageSquare
+      return <MessageSquare className="h-4 w-4" />
 
     case "ai":
-      return Zap
+      return <Zap className="h-4 w-4" />
 
     case "security":
-      return ShieldAlert
+      return <ShieldAlert className="h-4 w-4" />
 
     case "report":
-      return FileBarChart
+      return <FileBarChart className="h-4 w-4" />
 
     default:
-      return Bell
+      return <Bell className="h-4 w-4" />
   }
 }
 
@@ -88,6 +86,9 @@ function getNotificationTypeLabel(
       return "System"
   }
 }
+
+
+
 
 function formatNotificationTime(
   value?: string | null,
@@ -184,9 +185,7 @@ function NotificationItem({
   isReading: boolean
   isDeleting: boolean
 }) {
-  const Icon = getNotificationIcon(
-    notification.type,
-  )
+  
 
   const isRead =
     notification.read ??
@@ -213,16 +212,16 @@ function NotificationItem({
       {/* =================================================
           ICON
       ================================================= */}
-      <div
-        className={[
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-          isRead
-            ? "bg-muted text-muted-foreground"
-            : "bg-primary/10 text-primary",
-        ].join(" ")}
-      >
-        <Icon className="h-4 w-4" />
-      </div>
+     <div
+      className={[
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+        isRead
+          ? "bg-muted text-muted-foreground"
+          : "bg-primary/10 text-primary",
+      ].join(" ")}
+    >
+      {getNotificationIcon(notification.type)}
+    </div>
 
       {/* =================================================
           CONTENT
@@ -309,9 +308,7 @@ function NotificationDetail({
   notification: UserNotification
   onClose: () => void
 }) {
-  const Icon = getNotificationIcon(
-    notification.type,
-  )
+
 
   const details =
     notification.details?.trim() ||
@@ -335,7 +332,7 @@ function NotificationDetail({
         ================================================= */}
         <div className="flex shrink-0 items-start gap-3 border-b px-5 py-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Icon className="h-5 w-5" />
+            {getNotificationIcon(notification.type)}
           </div>
 
           <div className="min-w-0 flex-1">

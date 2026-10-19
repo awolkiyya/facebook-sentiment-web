@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ArrowRight, Link2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { FaFacebookF } from "react-icons/fa";
 
 interface MayorFacebookAnalyticsBannerProps {
@@ -11,13 +12,15 @@ interface MayorFacebookAnalyticsBannerProps {
 export default function MayorFacebookAnalyticsBanner({
   onConnect,
 }: MayorFacebookAnalyticsBannerProps) {
+  const router = useRouter();
+
   const handleConnect = () => {
     if (onConnect) {
       onConnect();
       return;
     }
 
-    window.location.href = "/or/settings/facebook";
+    router.push("/or/settings/facebook");
   };
 
   return (

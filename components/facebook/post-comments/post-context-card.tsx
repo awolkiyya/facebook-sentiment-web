@@ -1,18 +1,37 @@
+
+"use client"
+
+import type { FacebookPost } from "@/types/facebook/post"
+
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-
 import { FacebookPostSummary } from "@/components/facebook/FacebookPostSummary"
-import { formatDate, formatNumber } from "@/utils/post-comments-helpers"
 
+import {
+  formatDate,
+  formatNumber,
+} from "@/utils/post-comments-helpers"
+
+/*
+|--------------------------------------------------------------------------
+| PROPS
+|--------------------------------------------------------------------------
+*/
 
 interface PostContextCardProps {
   isLoading: boolean
-  postDate: string | null
+  postDate: FacebookPost["published_at"]
   postMessage: string
   postLikes: number
   postShares: number
   totalComments: number
 }
+
+/*
+|--------------------------------------------------------------------------
+| COMPONENT
+|--------------------------------------------------------------------------
+*/
 
 export function PostContextCard({
   isLoading,
@@ -28,6 +47,7 @@ export function PostContextCard({
         <CardContent className="p-5 sm:p-6">
           <div className="flex gap-4">
             <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
+
             <div className="flex-1 space-y-3">
               <Skeleton className="h-4 w-40" />
               <Skeleton className="h-3 w-28" />

@@ -6,7 +6,6 @@ import {
   BrainCircuit,
   FileBarChart,
   Globe2,
-  MessageSquareText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -97,8 +96,6 @@ export default function DashboardPage() {
   const mfaRequired =
     security?.require_two_factor ?? false;
 
-  const mfaSetupRequired =
-    security?.mfa_setup_required ?? false;
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">

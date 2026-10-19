@@ -65,21 +65,13 @@ export const useFacebookPages = () => {
   }, [])
 
   const connect = useCallback(() => {
-    try {
-      setIsConnecting(true)
+    setIsConnecting(true)
 
-      window.location.href =
-        "/api/v1/facebook/auth/redirect"
-    } catch (error) {
-      setIsConnecting(false)
-
-      toast.error("Unable to connect Facebook", {
-        description:
-          error instanceof Error
-            ? error.message
-            : "Please try again later.",
-      })
-    }
+    // Start the Facebook OAuth flow using a full browser navigation.
+    // This allows the backend to redirect the browser to Facebook.
+    window.location.assign(
+      "/api/v1/facebook/auth/redirect"
+    )
   }, [])
 
   const updateMonitoring = useCallback(
@@ -189,9 +181,7 @@ export const useFacebookPages = () => {
   const disconnect = useCallback(
     async (facebookPageId: string) => {
       try {
-        setDisconnectingPageId(
-          facebookPageId
-        )
+        setDisconnectingPageId(facebookPageId)
 
         const response: FacebookPageDisconnectResponse =
           await facebookPageService.disconnect(

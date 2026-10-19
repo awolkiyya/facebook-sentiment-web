@@ -1,57 +1,80 @@
+
+"use client"
+
 import { useQuery } from "@tanstack/react-query"
 
+import { facebookSyncService } from "@/services/facebook-sync.service"
 import { facebookSyncKeys } from "./use-facebook-sync-runs"
-import { facebookSyncApi } from "@/services/facebook-sync.service"
+
+/*
+|--------------------------------------------------------------------------
+| Constants
+|--------------------------------------------------------------------------
+*/
+
+const SYNC_POLL_INTERVAL_MS = 3_000
+
+const TERMINAL_SYNC_STATUSES = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+])
+
+/*
+|--------------------------------------------------------------------------
+| Fetch Synchronization Run Details
+|--------------------------------------------------------------------------
+*/
 
 export function useFacebookSyncRun(
   runId: string | undefined,
 ) {
+  const normalizedRunId = runId?.trim() || undefined
+
   return useQuery({
-    queryKey: runId
-      ? facebookSyncKeys.detail(runId)
+    queryKey: normalizedRunId
+      ? facebookSyncKeys.detail(normalizedRunId)
       : ["facebook-sync", "detail", "disabled"],
 
     queryFn: () => {
-      if (!runId) {
-        throw new Error("Synchronization run ID is required.")
+      if (!normalizedRunId) {
+        throw new Error(
+          "Synchronization run ID is required.",
+        )
       }
 
-      return facebookSyncApi.get(runId)
+      return facebookSyncService.get(normalizedRunId)
     },
 
-    enabled: Boolean(runId),
+    enabled: Boolean(normalizedRunId),
 
     /*
-     * Sync runs change while queue workers are processing them.
-     *
-     * Poll while the run is active so the UI can automatically move:
-     *
-     * queued → running → completed / failed
+     * Poll while the synchronization run is active.
+     * Stop polling after it reaches a terminal state.
      */
     refetchInterval: (query) => {
       const status = query.state.data?.status
 
       if (
-        status === "completed" ||
-        status === "failed"
+        status &&
+        TERMINAL_SYNC_STATUSES.has(status)
       ) {
         return false
       }
 
-      return 3000
+      return SYNC_POLL_INTERVAL_MS
     },
 
     /*
-     * Don't aggressively refetch failed requests.
+     * Retry transient request failures twice.
      */
     retry: 2,
 
     /*
-     * Keep the previous detail visible while React Query
-     * is fetching the latest state.
+     * Retain the previous detail while refreshing.
      */
     placeholderData: (previousData) => previousData,
 
-    staleTime: 1000,
+    staleTime: 1_000,
   })
 }

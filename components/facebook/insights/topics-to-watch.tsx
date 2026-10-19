@@ -11,10 +11,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { TopicInsight } from "@/types/facebook/analytics"
 
-import type {
-  TopicInsight,
-} from  "@/types/facebook-post"
 
 interface TopicsToWatchProps {
   topics: TopicInsight[]

@@ -44,34 +44,6 @@ type Locale = (typeof LOCALES)[number]
 
 const DASHBOARD_PREFIX = "/dashboard"
 
-/*
-|--------------------------------------------------------------------------
-| APPLICATION COOKIE
-|--------------------------------------------------------------------------
-|
-| This cookie identifies the frontend application.
-|
-| Expected value:
-|
-|     mayor
-|
-| IMPORTANT:
-|
-| This cookie is NOT a security boundary.
-|
-| It only helps the frontend determine whether the
-| current session belongs to the Mayor Social
-| Analytics application.
-|
-| Laravel remains the real authentication and
-| authorization authority.
-|
-|--------------------------------------------------------------------------
-*/
-
-const APPLICATION_COOKIE = "app"
-
-const APPLICATION_VALUE = "mayor"
 
 /*
 |--------------------------------------------------------------------------
@@ -219,26 +191,6 @@ function hasLaravelSession(
   return Boolean(sessionCookie?.value)
 }
 
-/*
-|--------------------------------------------------------------------------
-| APPLICATION COOKIE
-|--------------------------------------------------------------------------
-|
-| Expected:
-|
-|     app=mayor
-|
-|--------------------------------------------------------------------------
-*/
-
-function isMayorApplication(
-  request: NextRequest,
-): boolean {
-  return (
-    request.cookies.get(APPLICATION_COOKIE)?.value ===
-    APPLICATION_VALUE
-  )
-}
 
 /*
 |--------------------------------------------------------------------------

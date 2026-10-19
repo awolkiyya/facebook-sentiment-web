@@ -1,16 +1,15 @@
+
 "use client"
 
 import {
   Archive,
   CheckCircle2,
-  Circle,
   FileEdit,
   PowerOff,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-
-import type { AiModelStatus } from "./ai-model-management"
+import type { AiModelStatus } from "@/types/ai-model"
 
 interface ModelStatusBadgeProps {
   status: AiModelStatus
@@ -64,7 +63,7 @@ export default function ModelStatusBadge({
       variant="outline"
       className={`gap-1.5 whitespace-nowrap ${config.className}`}
     >
-      <Icon className="size-3.5" />
+      <Icon className="size-3.5" aria-hidden="true" />
       {config.label}
     </Badge>
   )

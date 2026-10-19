@@ -1,4 +1,7 @@
+
 "use client"
+
+import type { ReactNode } from "react"
 
 import {
   FileText,
@@ -9,34 +12,60 @@ import {
 
 import { Card, CardContent } from "@/components/ui/card"
 
-import type { FacebookPostKpis } from  "@/types/facebook-post"
+/*
+|--------------------------------------------------------------------------
+| TYPES
+|--------------------------------------------------------------------------
+*/
+
+export interface FacebookPostKpis {
+  posts: number
+  reactions: number
+  comments: number
+  shares: number
+}
 
 interface FacebookPostsKpiProps {
   kpis: FacebookPostKpis
 }
 
-function formatCompactNumber(
-  value: number,
-): string {
+interface KpiItemProps {
+  icon: ReactNode
+  label: string
+  value: number
+}
+
+/*
+|--------------------------------------------------------------------------
+| HELPERS
+|--------------------------------------------------------------------------
+*/
+
+function formatCompactNumber(value: number): string {
   return new Intl.NumberFormat("en", {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value)
 }
 
+/*
+|--------------------------------------------------------------------------
+| KPI ITEM
+|--------------------------------------------------------------------------
+*/
+
 function KpiItem({
   icon,
   label,
   value,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: number
-}) {
+}: KpiItemProps) {
   return (
     <Card className="shadow-none">
       <CardContent className="flex items-center gap-3 p-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted"
+          aria-hidden="true"
+        >
           {icon}
         </div>
 
@@ -45,7 +74,7 @@ function KpiItem({
             {label}
           </p>
 
-          <p className="mt-0.5 text-lg font-semibold">
+          <p className="mt-0.5 text-lg font-semibold tabular-nums">
             {formatCompactNumber(value)}
           </p>
         </div>
@@ -54,11 +83,20 @@ function KpiItem({
   )
 }
 
+/*
+|--------------------------------------------------------------------------
+| FACEBOOK POSTS KPI
+|--------------------------------------------------------------------------
+*/
+
 export function FacebookPostsKpi({
   kpis,
 }: FacebookPostsKpiProps) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section
+      aria-label="Facebook post statistics"
+      className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+    >
       <KpiItem
         icon={<FileText className="h-4 w-4" />}
         label="Posts Reviewed"
@@ -82,6 +120,6 @@ export function FacebookPostsKpi({
         label="Shares"
         value={kpis.shares}
       />
-    </div>
+    </section>
   )
 }

@@ -597,7 +597,7 @@ function PostComments() {
           />
 
           {/* Comments list */}
-          <CommentsSection
+          {/* <CommentsSection
             comments={commentsForSection}
             filteredComments={filteredCommentsForSection}
             search={search}
@@ -619,7 +619,7 @@ function PostComments() {
             formatDate={formatDate}
             formatNumber={formatNumber}
             formatSentiment={formatSentiment}
-          />
+          /> */}
 
           <div className="h-10" />
         </div>

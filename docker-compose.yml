@@ -1,0 +1,34 @@
+services:
+  frontend:
+    container_name: facebook-sentiment-web
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set NEXT_PUBLIC_API_URL in .env.production}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    expose:
+      - "3000"
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.sentiment-web.rule=Host(`${WEB_DOMAIN}`)"
+      - "traefik.http.routers.sentiment-web.entrypoints=websecure"
+      - "traefik.http.routers.sentiment-web.tls=true"
+      - "traefik.http.routers.sentiment-web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.sentiment-web.loadbalancer.server.port=3000"
+
+networks:
+  traefik-public:
+    external: true
+    name: traefik-public

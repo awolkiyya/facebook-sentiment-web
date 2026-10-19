@@ -1,3 +1,4 @@
+
 "use client"
 
 import {
@@ -29,11 +30,7 @@ import { useFacebookPosts } from "@/hooks/facebook/use-facebook-posts"
 
 import type { FacebookPageSummary } from "@/types/facebook/page"
 import type { FacebookPost } from "@/types/facebook/post"
-
-import type {
-  SentimentFilter,
-  SortMode,
-} from "@/types/facebook/common"
+import type { SortMode } from "@/types/facebook/common"
 
 import {
   calculateFacebookPostAnalytics,
@@ -42,10 +39,6 @@ import {
 import {
   FacebookPageHeader,
 } from "@/components/facebook/facebook-page-header"
-
-import {
-  FacebookPostsDebug,
-} from "@/components/facebook/facebook-posts-debug"
 
 import {
   FacebookPostsKpi,
@@ -70,12 +63,27 @@ import {
 */
 
 const POSTS_PER_PAGE = 20
+const SHOW_BACK_TO_TOP_AFTER = 600
 
 /*
- * Show the Back to Top control after the user
- * has moved this distance from the top.
- */
-const SHOW_BACK_TO_TOP_AFTER = 600
+|--------------------------------------------------------------------------
+| Helpers
+|--------------------------------------------------------------------------
+*/
+
+function normalizeSearch(value: string): string {
+  return value.trim().toLocaleLowerCase()
+}
+
+function getTimestamp(value: string | null | undefined): number {
+  if (!value) {
+    return 0
+  }
+
+  const timestamp = Date.parse(value)
+
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -86,10 +94,7 @@ const SHOW_BACK_TO_TOP_AFTER = 600
 export default function PagePosts() {
   const router = useRouter()
   const pathname = usePathname()
-
-  const params = useParams<{
-    id: string
-  }>()
+  const params = useParams<{ id: string }>()
 
   /*
   |--------------------------------------------------------------------------
@@ -128,23 +133,14 @@ export default function PagePosts() {
 
   /**
    * External Meta/Facebook Page ID.
-   *
-   * Example:
-   *
-   *     100297668388012
-   *
-   * This is NOT the local Laravel UUID.
+   * This is not the local Laravel UUID.
    */
   const facebookPageId =
     typeof params?.id === "string"
       ? params.id
       : ""
 
-  /**
-   * Preserve existing locale behavior.
-   */
-  const locale =
-    pathname.split("/")[1] || "or"
+  const locale = pathname.split("/")[1] || "or"
 
   /*
   |--------------------------------------------------------------------------
@@ -152,65 +148,34 @@ export default function PagePosts() {
   |--------------------------------------------------------------------------
   */
 
-  const [
-    search,
-    setSearch,
-  ] = useState("")
-
-  const [
-    sentimentFilter,
-    setSentimentFilter,
-  ] = useState<SentimentFilter>("all")
-
-  const [
-    sortMode,
-    setSortMode,
-  ] = useState<SortMode>("recent")
-
-  const [
-    expandedCommentsId,
-    setExpandedCommentsId,
-  ] = useState<string | null>(null)
-
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] = useState(false)
-
-  const [
-    showBackToTop,
-    setShowBackToTop,
-  ] = useState(false)
+  const [search, setSearch] = useState("")
+  const [sortMode, setSortMode] = useState<SortMode>("recent")
+  const [expandedCommentsId, setExpandedCommentsId] =
+    useState<string | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [showBackToTop, setShowBackToTop] = useState(false)
 
   /*
   |--------------------------------------------------------------------------
-  | Back To Top Visibility
+  | Back-To-Top Visibility
   |--------------------------------------------------------------------------
   */
 
   useEffect(() => {
     const handleScroll = () => {
       setShowBackToTop(
-        window.scrollY >=
-          SHOW_BACK_TO_TOP_AFTER,
+        window.scrollY >= SHOW_BACK_TO_TOP_AFTER,
       )
     }
 
     handleScroll()
 
-    window.addEventListener(
-      "scroll",
-      handleScroll,
-      {
-        passive: true,
-      },
-    )
+    window.addEventListener("scroll", handleScroll, {
+      passive: true,
+    })
 
     return () => {
-      window.removeEventListener(
-        "scroll",
-        handleScroll,
-      )
+      window.removeEventListener("scroll", handleScroll)
     }
   }, [])
 
@@ -220,13 +185,12 @@ export default function PagePosts() {
   |--------------------------------------------------------------------------
   */
 
-  const handleBackToTop =
-    useCallback(() => {
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      })
-    }, [])
+  const handleBackToTop = useCallback(() => {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    })
+  }, [])
 
   /*
   |--------------------------------------------------------------------------
@@ -235,18 +199,17 @@ export default function PagePosts() {
   */
 
   useEffect(() => {
-    if (!facebookPageId) {
+    if (!facebookPageId || pages.length > 0) {
       return
     }
 
-    if (pages.length === 0) {
-      void getPages()
-    }
-  }, [
-    facebookPageId,
-    pages.length,
-    getPages,
-  ])
+    void getPages().catch((error: unknown) => {
+      console.error(
+        "Failed to load connected Facebook pages:",
+        error,
+      )
+    })
+  }, [facebookPageId, pages.length, getPages])
 
   /*
   |--------------------------------------------------------------------------
@@ -254,23 +217,17 @@ export default function PagePosts() {
   |--------------------------------------------------------------------------
   */
 
-  const currentPage =
-    useMemo(() => {
-      if (!facebookPageId) {
-        return null
-      }
+  const currentPage = useMemo(() => {
+    if (!facebookPageId) {
+      return null
+    }
 
-      return (
-        pages.find(
-          (page) =>
-            page.facebook_page_id ===
-            facebookPageId,
-        ) ?? null
-      )
-    }, [
-      pages,
-      facebookPageId,
-    ])
+    return (
+      pages.find(
+        (page) => page.facebook_page_id === facebookPageId,
+      ) ?? null
+    )
+  }, [pages, facebookPageId])
 
   /*
   |--------------------------------------------------------------------------
@@ -278,49 +235,24 @@ export default function PagePosts() {
   |--------------------------------------------------------------------------
   */
 
-  const displayPage:
-    FacebookPageSummary =
-    currentPage
-      ? {
-          id:
-            currentPage.id,
-
-          facebookPageId:
-            currentPage.facebook_page_id,
-
-          name:
-            currentPage.name,
-
-          category:
-            currentPage.category ??
-            "Government Organization",
-
-          followers:
-            currentPage.followers_count ??
-            0,
-
-          isActive:
-            currentPage.is_active,
-        }
-      : {
-          id:
-            facebookPageId,
-
-          facebookPageId:
-            facebookPageId,
-
-          name:
-            "Facebook Page",
-
-          category:
-            "Government Organization",
-
-          followers:
-            0,
-
-          isActive:
-            false,
-        }
+  const displayPage: FacebookPageSummary = currentPage
+    ? {
+        id: currentPage.id,
+        facebookPageId: currentPage.facebook_page_id,
+        name: currentPage.name,
+        category:
+          currentPage.category ?? "Government Organization",
+        followers: currentPage.followers_count ?? 0,
+        isActive: currentPage.is_active,
+      }
+    : {
+        id: facebookPageId,
+        facebookPageId,
+        name: "Facebook Page",
+        category: "Government Organization",
+        followers: 0,
+        isActive: false,
+      }
 
   /*
   |--------------------------------------------------------------------------
@@ -328,37 +260,27 @@ export default function PagePosts() {
   |--------------------------------------------------------------------------
   */
 
-  const loadFacebookData =
-    useCallback(async () => {
-      if (!facebookPageId) {
-        return
-      }
+  const loadFacebookData = useCallback(async () => {
+    if (!facebookPageId) {
+      return
+    }
 
-      try {
-        await getPosts(
-          facebookPageId,
-          {
-            page: 1,
-            per_page:
-              POSTS_PER_PAGE,
-          },
-        )
-      } catch (error) {
-        console.error(
-          "Failed to load Facebook posts:",
-          error,
-        )
-      }
-    }, [
-      facebookPageId,
-      getPosts,
-    ])
+    try {
+      await getPosts(facebookPageId, {
+        page: 1,
+        per_page: POSTS_PER_PAGE,
+      })
+    } catch (error) {
+      console.error(
+        "Failed to load Facebook posts:",
+        error,
+      )
+    }
+  }, [facebookPageId, getPosts])
 
   useEffect(() => {
     void loadFacebookData()
-  }, [
-    loadFacebookData,
-  ])
+  }, [loadFacebookData])
 
   /*
   |--------------------------------------------------------------------------
@@ -366,251 +288,91 @@ export default function PagePosts() {
   |--------------------------------------------------------------------------
   */
 
-  const handleLoadMore =
-    async () => {
-      if (!facebookPageId) {
-        return
-      }
-
-      if (isLoadingMore) {
-        return
-      }
-
-      if (!hasMorePosts) {
-        return
-      }
-
-      try {
-        await loadMorePosts(
-          facebookPageId,
-        )
-      } catch (error) {
-        console.error(
-          "Failed to load more Facebook posts:",
-          error,
-        )
-      }
+  const handleLoadMore = useCallback(async () => {
+    if (
+      !facebookPageId ||
+      isLoadingMore ||
+      !hasMorePosts
+    ) {
+      return
     }
+
+    try {
+      await loadMorePosts(facebookPageId)
+    } catch (error) {
+      console.error(
+        "Failed to load more Facebook posts:",
+        error,
+      )
+    }
+  }, [
+    facebookPageId,
+    isLoadingMore,
+    hasMorePosts,
+    loadMorePosts,
+  ])
 
   /*
   |--------------------------------------------------------------------------
-  | UI Posts Mapper
+  | Search And Sort API Posts
   |--------------------------------------------------------------------------
+  |
+  | Keep the original FacebookPost model so that both FacebookPostList
+  | and calculateFacebookPostAnalytics receive their expected types.
+  |
   */
 
-  const displayPosts =
-    useMemo(() => {
-      return posts.map(
-        (
-          post: FacebookPost,
-        ) => ({
-          /*
-           * Identity
-           */
-          id:
-            post.id,
+  const filteredPosts = useMemo<FacebookPost[]>(() => {
+    const normalizedSearch = normalizeSearch(search)
 
-          facebookPostId:
-            post.facebook_post_id,
+    const filtered = posts.filter((post) => {
+      if (!normalizedSearch) {
+        return true
+      }
 
-          /*
-           * Content
-           */
-          message:
-            post.message ?? "",
+      const message = post.message ?? ""
+      const topic = post.ai_analysis?.topic?.name ?? ""
+      const sentiment =
+        post.ai_analysis?.sentiment?.label ?? ""
 
-          publishedAt:
-            post.published_at ??
-            post.created_at ??
-            "",
-
-          permalinkUrl:
-            post.permalink_url,
-
-          /*
-           * Attachments
-           *
-           * Keep the normalized backend structure.
-           *
-           * Album children remain available through:
-           *
-           *     attachment.children
-           */
-          attachments:
-            post.attachments ?? [],
-
-          /*
-           * Engagement
-           */
-          reactions:
-            post.engagement
-              .likes ?? 0,
-
-          comments:
-            post.engagement
-              .comments ?? 0,
-
-          shares:
-            post.engagement
-              .shares ?? 0,
-
-          /*
-           * AI Sentiment
-           */
-          sentiment:
-            post.ai_analysis
-              .sentiment
-              .label ??
-            "neutral",
-
-          sentimentConfidence:
-            post.ai_analysis
-              .sentiment
-              .score ??
-            null,
-
-          /*
-           * AI Topic
-           */
-          topic:
-            post.ai_analysis
-              .topic
-              .name ??
-            "Uncategorized",
-
-          topicConfidence:
-            post.ai_analysis
-              .topic
-              .confidence ??
-            null,
-
-          /*
-           * Top Comments
-           */
-          topComments:
-            post.top_comments ??
-            [],
-        }),
+      return [message, topic, sentiment].some((value) =>
+        value.toLocaleLowerCase().includes(normalizedSearch),
       )
-    }, [
-      posts,
-    ])
+    })
+
+    return [...filtered].sort((a, b) => {
+      const timestampA = getTimestamp(
+        a.published_at ?? a.created_at,
+      )
+
+      const timestampB = getTimestamp(
+        b.published_at ?? b.created_at,
+      )
+
+      switch (sortMode) {
+        case "engagement":
+          return timestampA - timestampB
+
+        case "recent":
+        default:
+          return timestampB - timestampA
+      }
+    })
+  }, [posts, search, sortMode])
 
   /*
   |--------------------------------------------------------------------------
   | Analytics
   |--------------------------------------------------------------------------
+  |
+  | Analytics receives the original API posts, not filtered UI objects.
+  |
   */
 
-  const analytics =
-    useMemo(
-      () =>
-        calculateFacebookPostAnalytics(
-          displayPosts,
-        ),
-      [
-        displayPosts,
-      ],
-    )
-
-  /*
-  |--------------------------------------------------------------------------
-  | Filter + Sort
-  |--------------------------------------------------------------------------
-  */
-
-  const filteredPosts =
-    useMemo(() => {
-      const normalizedSearch =
-        search
-          .trim()
-          .toLowerCase()
-
-      const filtered =
-        displayPosts.filter(
-          (post) => {
-            const matchesSearch =
-              normalizedSearch.length ===
-                0 ||
-              post.message
-                .toLowerCase()
-                .includes(
-                  normalizedSearch,
-                ) ||
-              post.topic
-                .toLowerCase()
-                .includes(
-                  normalizedSearch,
-                )
-
-            const matchesSentiment =
-              sentimentFilter ===
-                "all" ||
-              post.sentiment ===
-                sentimentFilter
-
-            return (
-              matchesSearch &&
-              matchesSentiment
-            )
-          },
-        )
-
-      /*
-       * Never mutate displayPosts.
-       */
-      return [
-        ...filtered,
-      ].sort(
-        (a, b) => {
-          /*
-          |--------------------------------------------------------------------------
-          | Engagement
-          |--------------------------------------------------------------------------
-          */
-
-          if (
-            sortMode ===
-            "engagement"
-          ) {
-            const engagementA =
-              a.reactions +
-              a.comments +
-              a.shares
-
-            const engagementB =
-              b.reactions +
-              b.comments +
-              b.shares
-
-            return (
-              engagementB -
-              engagementA
-            )
-          }
-
-          /*
-          |--------------------------------------------------------------------------
-          | Recent
-          |--------------------------------------------------------------------------
-          */
-
-          return (
-            new Date(
-              b.publishedAt,
-            ).getTime() -
-            new Date(
-              a.publishedAt,
-            ).getTime()
-          )
-        },
-      )
-    }, [
-      displayPosts,
-      search,
-      sentimentFilter,
-      sortMode,
-    ])
+  const analytics = useMemo(
+    () => calculateFacebookPostAnalytics(posts),
+    [posts],
+  )
 
   /*
   |--------------------------------------------------------------------------
@@ -618,33 +380,29 @@ export default function PagePosts() {
   |--------------------------------------------------------------------------
   */
 
-  const handleToggleComments =
-    (
-      postId: string,
-    ) => {
-      setExpandedCommentsId(
-        (current) =>
-          current === postId
-            ? null
-            : postId,
+  const handleToggleComments = useCallback(
+    (postId: string) => {
+      setExpandedCommentsId((current) =>
+        current === postId ? null : postId,
       )
-    }
+    },
+    [],
+  )
 
   /**
-   * `postId` is the local Laravel
-   * FacebookPost UUID.
-   *
-   * `facebookPageId` is the external
-   * Meta Page ID.
+   * postId is the local Laravel FacebookPost UUID.
+   * facebookPageId is the external Meta Page ID.
    */
-  const handleViewComments =
-    (
-      postId: string,
-    ) => {
+  const handleViewComments = useCallback(
+    (postId: string) => {
       router.push(
-        `/${locale}/dashboard/facebook/pages/${facebookPageId}/posts/${postId}/comments`,
+        `/${locale}/dashboard/facebook/pages/${encodeURIComponent(
+          facebookPageId,
+        )}/posts/${encodeURIComponent(postId)}/comments`,
       )
-    }
+    },
+    [router, locale, facebookPageId],
+  )
 
   /*
   |--------------------------------------------------------------------------
@@ -652,94 +410,72 @@ export default function PagePosts() {
   |--------------------------------------------------------------------------
   */
 
-  const handleSyncPosts =
-    async () => {
-      if (!facebookPageId) {
-        return
-      }
-
-      try {
-        await syncPosts(
-          facebookPageId,
-        )
-
-        /*
-         * New synchronized posts are normally
-         * displayed at the top of the feed.
-         */
-        window.scrollTo({
-          top: 0,
-          behavior: "smooth",
-        })
-      } catch (error) {
-        console.error(
-          "Failed to sync Facebook posts:",
-          error,
-        )
-      }
+  const handleSyncPosts = useCallback(async () => {
+    if (!facebookPageId) {
+      return
     }
 
+    try {
+      await syncPosts(facebookPageId)
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      })
+    } catch (error) {
+      console.error(
+        "Failed to sync Facebook posts:",
+        error,
+      )
+    }
+  }, [facebookPageId, syncPosts])
+
   /*
   |--------------------------------------------------------------------------
-  | Refresh
+  | Refresh Posts
   |--------------------------------------------------------------------------
   */
 
-  const handleRefresh =
-    async () => {
-      if (!facebookPageId) {
-        return
-      }
-
-      try {
-        setIsRefreshing(true)
-
-        await getPosts(
-          facebookPageId,
-          {
-            page:
-              postsPagination
-                ?.current_page ??
-              1,
-
-            per_page:
-              postsPagination
-                ?.per_page ??
-              POSTS_PER_PAGE,
-          },
-        )
-      } catch (error) {
-        console.error(
-          "Failed to refresh Facebook posts:",
-          error,
-        )
-      } finally {
-        setIsRefreshing(false)
-      }
+  const handleRefresh = useCallback(async () => {
+    if (!facebookPageId || isRefreshing) {
+      return
     }
 
+    try {
+      setIsRefreshing(true)
+
+      await getPosts(facebookPageId, {
+        page: 1,
+        per_page:
+          postsPagination?.per_page ?? POSTS_PER_PAGE,
+      })
+    } catch (error) {
+      console.error(
+        "Failed to refresh Facebook posts:",
+        error,
+      )
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [
+    facebookPageId,
+    isRefreshing,
+    getPosts,
+    postsPagination?.per_page,
+  ])
+
   /*
   |--------------------------------------------------------------------------
-  | Loading State
+  | Loading And Counts
   |--------------------------------------------------------------------------
   */
 
-  const isLoading =
-    isLoadingPosts ||
-    isSyncingPosts
+  const isLoading = isLoadingPosts || isSyncingPosts
 
-  /*
-  |--------------------------------------------------------------------------
-  | Loaded Post Count
-  |--------------------------------------------------------------------------
-  */
-
-  const loadedPostsCount =
-    posts.length
+  const loadedPostsCount = posts.length
 
   const totalPosts =
-    postsPagination?.total ??
-    loadedPostsCount
+    postsPagination?.total ?? loadedPostsCount
 
   /*
   |--------------------------------------------------------------------------
@@ -751,14 +487,12 @@ export default function PagePosts() {
     return (
       <div className="mx-auto w-full max-w-5xl px-4 py-10">
         <div className="rounded-xl border bg-background p-8 text-center">
-
           <h2 className="text-lg font-semibold">
             Facebook Page not found
           </h2>
 
           <p className="mt-2 text-sm text-muted-foreground">
-            A Facebook Page ID is required to
-            view posts.
+            A Facebook Page ID is required to view posts.
           </p>
 
           <Button
@@ -766,14 +500,11 @@ export default function PagePosts() {
             variant="outline"
             className="mt-5"
             onClick={() =>
-              router.push(
-                `/${locale}/dashboard/facebook/pages`,
-              )
+              router.push(`/${locale}/dashboard/facebook/pages`)
             }
           >
             Back to Pages
           </Button>
-
         </div>
       </div>
     )
@@ -786,105 +517,66 @@ export default function PagePosts() {
   */
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 py-4 md:px-4 sm:px-6 lg:px-8">
-
-      {/* =====================================================
-          PAGE HEADER
-      ===================================================== */}
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-4 sm:px-6 lg:px-8">
+      {/* Page Header */}
 
       <FacebookPageHeader
         page={displayPage}
         locale={locale}
       />
 
-      {/* =====================================================
-          DEBUG
-      ===================================================== */}
-
-      {/*
-      <FacebookPostsDebug
-        facebookPageId={
-          facebookPageId
-        }
-        postsCount={
-          posts.length
-        }
-        totalPosts={
-          postsPagination?.total ?? 0
-        }
-      />
-      */}
-
-      {/* =====================================================
-          ACTIONS
-      ===================================================== */}
+      {/* Actions */}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
         <div className="min-w-0">
-
           <h2 className="text-lg font-semibold">
             Facebook Posts
           </h2>
 
           <p className="mt-1 text-sm text-muted-foreground">
-            Monitor public response and AI-analyzed
-            sentiment across page posts.
+            Monitor public response and AI-analyzed sentiment
+            across page posts.
           </p>
-
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
-
-          {/* -------------------------------------------------
-              Add Post
-          ------------------------------------------------- */}
-
           <Button
+            type="button"
             size="sm"
-            onClick={() => {}}
             className="gap-2"
+            disabled
+            title="Creating Facebook posts is not available"
           >
             <Plus className="h-4 w-4" />
-
             <span className="hidden sm:inline">
               Add Post
             </span>
           </Button>
 
-          {/* -------------------------------------------------
-              Bulk Posts
-          ------------------------------------------------- */}
-
           <Button
+            type="button"
             size="sm"
             variant="outline"
-            onClick={() => {}}
             className="gap-2"
+            disabled
+            title="Bulk post creation is not available"
           >
             <Files className="h-4 w-4" />
-
             <span className="hidden sm:inline">
               Bulk Posts
             </span>
           </Button>
 
-          {/* -------------------------------------------------
-              Sync
-          ------------------------------------------------- */}
-
           <Button
+            type="button"
             size="icon"
             variant="outline"
-            onClick={() =>
-              void handleSyncPosts()
-            }
+            onClick={() => void handleSyncPosts()}
             disabled={
               isSyncingPosts ||
               isLoadingPosts ||
               isRefreshing ||
-              isLoadingMore ||
-              !facebookPageId
+              isLoadingMore
             }
             title="Sync posts"
             aria-label="Sync posts"
@@ -898,21 +590,15 @@ export default function PagePosts() {
             />
           </Button>
 
-          {/* -------------------------------------------------
-              Refresh
-          ------------------------------------------------- */}
-
           <Button
+            type="button"
             size="icon"
             variant="outline"
-            onClick={() =>
-              void handleRefresh()
-            }
+            onClick={() => void handleRefresh()}
             disabled={
               isRefreshing ||
               isLoading ||
-              isLoadingMore ||
-              !facebookPageId
+              isLoadingMore
             }
             title="Refresh posts"
             aria-label="Refresh posts"
@@ -925,256 +611,157 @@ export default function PagePosts() {
               }
             />
           </Button>
-
         </div>
       </div>
 
-      {/* =====================================================
-          KPI
-      ===================================================== */}
+      {/* KPI */}
 
-      <FacebookPostsKpi
-        kpis={
-          analytics.kpis
-        }
-      />
+      <FacebookPostsKpi kpis={analytics.kpis} />
 
-      {/* =====================================================
-          MAIN CONTENT
-      ===================================================== */}
+      {/* Main Content */}
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-
-        {/* ===================================================
-            POSTS COLUMN
-        =================================================== */}
+        {/* Posts Column */}
 
         <section className="min-w-0 space-y-4">
-
-          {/* -------------------------------------------------
-              Filters
-          ------------------------------------------------- */}
-
           <FacebookPostFilters
-            search={
-              search
-            }
-            onSearchChange={
-              setSearch
-            }
-            sortMode={
-              sortMode
-            }
-            onSortModeChange={
-              setSortMode
-            }
+            search={search}
+            onSearchChange={setSearch}
+            sortMode={sortMode}
+            onSortModeChange={setSortMode}
           />
-
-          {/* -------------------------------------------------
-              Posts
-          ------------------------------------------------- */}
 
           <FacebookPostList
-            posts={
-              filteredPosts
-            }
-            expandedCommentsId={
-              expandedCommentsId
-            }
-            onToggleComments={
-              handleToggleComments
-            }
-            onViewComments={
-              handleViewComments
-            }
+            posts={filteredPosts}
+            expandedCommentsId={expandedCommentsId}
+            onToggleComments={handleToggleComments}
+            onViewComments={handleViewComments}
           />
 
-          {/* =================================================
-              LOAD MORE
-          ================================================= */}
+          {/* Load More */}
 
-          {!isLoadingPosts &&
-            posts.length > 0 && (
-              <div
-                className="flex flex-col items-center justify-center border-t pt-5"
-                aria-live="polite"
-                aria-busy={
-                  isLoadingMore
-                }
-              >
+          {!isLoadingPosts && posts.length > 0 && (
+            <div
+              className="flex flex-col items-center justify-center border-t pt-5"
+              aria-live="polite"
+              aria-busy={isLoadingMore}
+            >
+              <p className="mb-3 text-xs text-muted-foreground">
+                Showing{" "}
+                <span className="font-medium text-foreground">
+                  {loadedPostsCount}
+                </span>{" "}
+                of{" "}
+                <span className="font-medium text-foreground">
+                  {totalPosts}
+                </span>{" "}
+                posts
+              </p>
 
-                <p className="mb-3 text-xs text-muted-foreground">
-                  Showing{" "}
-                  <span className="font-medium text-foreground">
-                    {loadedPostsCount}
-                  </span>{" "}
-                  of{" "}
-                  <span className="font-medium text-foreground">
-                    {totalPosts}
-                  </span>{" "}
-                  posts
-                </p>
+              {hasMorePosts && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleLoadMore()}
+                  disabled={
+                    isLoadingMore ||
+                    isLoadingPosts ||
+                    isSyncingPosts ||
+                    isRefreshing
+                  }
+                  className="min-w-40 gap-2"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Loading posts...</span>
+                    </>
+                  ) : (
+                    <span>Load more posts</span>
+                  )}
+                </Button>
+              )}
 
-                {hasMorePosts && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      void handleLoadMore()
-                    }
-                    disabled={
-                      isLoadingMore ||
-                      isLoadingPosts ||
-                      isSyncingPosts ||
-                      isRefreshing
-                    }
-                    className="min-w-40 gap-2"
-                  >
-                    {isLoadingMore ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
+              {!hasMorePosts && (
+                <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+                  <span className="h-px w-8 bg-border" />
+                  <span>All posts loaded</span>
+                  <span className="h-px w-8 bg-border" />
+                </div>
+              )}
+            </div>
+          )}
 
-                        <span>
-                          Loading posts...
-                        </span>
-                      </>
-                    ) : (
-                      <span>
-                        Load more posts
-                      </span>
-                    )}
-                  </Button>
-                )}
-
-                {!hasMorePosts && (
-                  <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-
-                    <span className="h-px w-8 bg-border" />
-
-                    <span>
-                      All posts loaded
-                    </span>
-
-                    <span className="h-px w-8 bg-border" />
-
-                  </div>
-                )}
-
-              </div>
-            )}
-
-          {/* =================================================
-              EMPTY STATE
-          ================================================= */}
+          {/* Empty State */}
 
           {!isLoadingPosts &&
             !isLoadingMore &&
-            posts.length === 0 && (
+            filteredPosts.length === 0 && (
               <div className="rounded-xl border bg-background px-6 py-10 text-center">
-
                 <p className="text-sm font-medium">
-                  No Facebook posts found.
+                  {search.trim()
+                    ? "No posts match your search."
+                    : "No Facebook posts found."}
                 </p>
 
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Try refreshing the page or
-                  synchronizing posts from Facebook.
+                  {search.trim()
+                    ? "Try a different search term."
+                    : "Try refreshing the page or synchronizing posts from Facebook."}
                 </p>
 
+                {search.trim() && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => setSearch("")}
+                  >
+                    Clear search
+                  </Button>
+                )}
               </div>
             )}
 
-          {/* =================================================
-              INITIAL LOADING
-          ================================================= */}
+          {/* Initial Loading */}
 
-          {isLoadingPosts &&
-            posts.length === 0 && (
-              <div
-                className="flex min-h-32 items-center justify-center"
-                aria-live="polite"
-                aria-busy="true"
-              >
-
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-
-                  <Loader2 className="h-4 w-4 animate-spin" />
-
-                  <span>
-                    Loading Facebook posts...
-                  </span>
-
-                </div>
-
+          {isLoadingPosts && posts.length === 0 && (
+            <div
+              className="flex min-h-32 items-center justify-center"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Loading Facebook posts...</span>
               </div>
-            )}
-
+            </div>
+          )}
         </section>
 
-        {/* ===================================================
-            INSIGHTS ASIDE
-        =================================================== */}
+        {/* Insights */}
 
         <aside className="min-w-0 xl:sticky xl:top-6">
-
           <FacebookInsightsRail
-            executiveSummary={
-              analytics.executiveSummary
-            }
-
-            topics={
-              analytics.topics
-            }
-
-            mostDiscussedPost={
-              analytics.mostDiscussedPost
-            }
-
-            onViewComments={
-              handleViewComments
-            }
+            executiveSummary={analytics.executiveSummary}
+            topics={analytics.topics}
+            mostDiscussedPost={analytics.mostDiscussedPost}
+            onViewComments={handleViewComments}
           />
-
         </aside>
-
       </div>
 
-      {/* =====================================================
-          BACK TO TOP
-      ===================================================== */}
+      {/* Back To Top */}
 
       {showBackToTop && (
-        <div
-          className="
-            fixed
-            right-4
-            bottom-5
-            z-50
-            sm:right-5
-            sm:bottom-6
-            lg:right-6
-          "
-        >
+        <div className="fixed right-4 bottom-5 z-50 sm:right-5 sm:bottom-6 lg:right-6">
           <Button
             type="button"
             size="icon"
             variant="outline"
-            className="
-              h-10
-              w-10
-              rounded-full
-              bg-background/95
-              shadow-md
-              backdrop-blur
-              transition-all
-              duration-200
-              hover:-translate-y-0.5
-              hover:shadow-lg
-              active:scale-95
-            "
-            onClick={
-              handleBackToTop
-            }
+            className="h-10 w-10 rounded-full bg-background/95 shadow-md backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg active:scale-95"
+            onClick={handleBackToTop}
             aria-label="Back to top"
             title="Back to top"
           >
@@ -1182,7 +769,6 @@ export default function PagePosts() {
           </Button>
         </div>
       )}
-
     </div>
   )
 }

@@ -51,14 +51,19 @@ interface PermissionGroup {
   permissions: Permission[]
 }
 
+interface RoleFormState {
+  key: string
+  name: string
+  selectedPermissions: string[]
+}
+
 /*
 |--------------------------------------------------------------------------
 | Constants
 |--------------------------------------------------------------------------
 */
 
-const ROLES_URL =
-  "/or/dashboard/administration/roles"
+const ROLES_URL = "/or/dashboard/administration/roles"
 
 /*
 |--------------------------------------------------------------------------
@@ -66,18 +71,7 @@ const ROLES_URL =
 |--------------------------------------------------------------------------
 */
 
-/**
- * Safely converts a role name into a human-readable label.
- *
- * USER
- * -> User
- *
- * ANALYTICS_OFFICER
- * -> Analytics Officer
- */
-function formatRoleName(
-  value?: string | null,
-): string {
+function formatRoleName(value?: string | null): string {
   if (
     typeof value !== "string" ||
     value.trim().length === 0
@@ -94,18 +88,7 @@ function formatRoleName(
     )
 }
 
-/**
- * Normalize a role name before submission.
- *
- * analytics officer
- * -> ANALYTICS_OFFICER
- *
- * Analytics-Officer
- * -> ANALYTICS_OFFICER
- */
-function normalizeRoleName(
-  value: string,
-): string {
+function normalizeRoleName(value: string): string {
   return value
     .trim()
     .toUpperCase()
@@ -115,20 +98,6 @@ function normalizeRoleName(
     .replace(/^_+|_+$/g, "")
 }
 
-/**
- * Safely extract permission names from a role.
- *
- * Expected role structure:
- *
- * {
- *   permissions: [
- *     {
- *       id: "...",
- *       name: "dashboard.view"
- *     }
- *   ]
- * }
- */
 function getRolePermissionNames(
   rolePermissions:
     | Array<{
@@ -145,14 +114,9 @@ function getRolePermissionNames(
   return Array.from(
     new Set(
       rolePermissions
-        .map(
-          (permission) =>
-            permission?.name,
-        )
+        .map((permission) => permission?.name)
         .filter(
-          (
-            name,
-          ): name is string =>
+          (name): name is string =>
             typeof name === "string" &&
             name.trim().length > 0,
         )
@@ -161,17 +125,10 @@ function getRolePermissionNames(
   )
 }
 
-/**
- * Groups permissions returned by the backend.
- *
- * The backend remains the source of truth
- * for permission grouping and metadata.
- */
 function buildPermissionGroups(
   permissions: Permission[],
 ): PermissionGroup[] {
-  const groups =
-    new Map<string, PermissionGroup>()
+  const groups = new Map<string, PermissionGroup>()
 
   for (const permission of permissions) {
     const groupKey =
@@ -185,22 +142,17 @@ function buildPermissionGroups(
       permission.resource ||
       "Other"
 
-    const existingGroup =
-      groups.get(groupKey)
+    const existingGroup = groups.get(groupKey)
 
     if (existingGroup) {
-      existingGroup.permissions.push(
-        permission,
-      )
-
+      existingGroup.permissions.push(permission)
       continue
     }
 
     groups.set(groupKey, {
       key: groupKey,
       label: groupLabel,
-      description:
-        permission.group_description,
+      description: permission.group_description,
       permissions: [permission],
     })
   }
@@ -231,8 +183,7 @@ function RoleFormPage() {
         ? params.id[0]
         : undefined
 
-  const isEditMode =
-    Boolean(roleId)
+  const isEditMode = Boolean(roleId)
 
   /*
   |--------------------------------------------------------------------------
@@ -247,15 +198,10 @@ function RoleFormPage() {
     error: roleError,
   } = useRole(roleId)
 
-
-  console.log("role",role);
-
   const {
     data: permissions = [],
-    isLoading:
-      isPermissionsLoading,
-    isError:
-      isPermissionsError,
+    isLoading: isPermissionsLoading,
+    isError: isPermissionsError,
     error: permissionsError,
   } = usePermissions()
 
@@ -265,30 +211,8 @@ function RoleFormPage() {
   |--------------------------------------------------------------------------
   */
 
-  const createRoleMutation =
-    useCreateRole()
-
-  const updateRoleMutation =
-    useUpdateRole()
-
-  /*
-  |--------------------------------------------------------------------------
-  | Form State
-  |--------------------------------------------------------------------------
-  */
-
-  const [name, setName] =
-    React.useState("")
-
-  const [
-    selectedPermissions,
-    setSelectedPermissions,
-  ] = React.useState<string[]>([])
-
-  const [
-    openGroups,
-    setOpenGroups,
-  ] = React.useState<string[]>([])
+  const createRoleMutation = useCreateRole()
+  const updateRoleMutation = useUpdateRole()
 
   /*
   |--------------------------------------------------------------------------
@@ -296,16 +220,18 @@ function RoleFormPage() {
   |--------------------------------------------------------------------------
   */
 
-  const permissionGroups =
-    React.useMemo(
-      () =>
-        buildPermissionGroups(
-          Array.isArray(permissions)
-            ? permissions
-            : [],
-        ),
-      [permissions],
-    )
+  const permissionList = React.useMemo(
+    () =>
+      Array.isArray(permissions)
+        ? permissions
+        : [],
+    [permissions],
+  )
+
+  const permissionGroups = React.useMemo(
+    () => buildPermissionGroups(permissionList),
+    [permissionList],
+  )
 
   /*
   |--------------------------------------------------------------------------
@@ -313,31 +239,92 @@ function RoleFormPage() {
   |--------------------------------------------------------------------------
   */
 
-  const availablePermissionNames =
-    React.useMemo(
-      () =>
-        new Set(
-          (
-            Array.isArray(
-              permissions,
-            )
-              ? permissions
-              : []
-          )
-            .map(
-              (permission) =>
-                permission.name,
-            )
-            .filter(
-              (
-                name,
-              ): name is string =>
-                typeof name === "string" &&
-                name.trim().length > 0,
-            ),
-        ),
-      [permissions],
-    )
+  const availablePermissionNames = React.useMemo(
+    () =>
+      new Set(
+        permissionList
+          .map((permission) => permission.name)
+          .filter(
+            (name): name is string =>
+              typeof name === "string" &&
+              name.trim().length > 0,
+          ),
+      ),
+    [permissionList],
+  )
+
+  /*
+  |--------------------------------------------------------------------------
+  | Form State
+  |--------------------------------------------------------------------------
+  |
+  | Form values are associated with the current route key.
+  |
+  | When a role is first loaded, initial values are derived
+  | directly from the query result. This avoids calling
+  | setState inside an effect.
+  |
+  | Once the user edits the form, local state takes precedence.
+  | React Query refetches therefore do not overwrite edits.
+  |
+  */
+
+  const formKey = roleId ?? "create-role"
+
+  const initialName =
+    isEditMode && role
+      ? typeof role.name === "string"
+        ? role.name
+        : ""
+      : ""
+
+  const initialSelectedPermissions = React.useMemo(
+    () =>
+      isEditMode && role
+        ? getRolePermissionNames(role.permissions)
+        : [],
+    [isEditMode, role],
+  )
+
+  const [formState, setFormState] =
+    React.useState<RoleFormState>({
+      key: "create-role",
+      name: "",
+      selectedPermissions: [],
+    })
+
+  const isCurrentForm = formState.key === formKey
+
+  const name = isCurrentForm
+    ? formState.name
+    : initialName
+
+  const selectedPermissions = isCurrentForm
+    ? formState.selectedPermissions
+    : initialSelectedPermissions
+
+  /*
+  |--------------------------------------------------------------------------
+  | Permission Group Expansion
+  |--------------------------------------------------------------------------
+  |
+  | null means no manual expansion changes have been made.
+  | In that case, all groups are open by default.
+  |
+  | An empty array is a valid user selection: all groups
+  | are explicitly closed.
+  |
+  */
+
+  const [openGroups, setOpenGroups] =
+    React.useState<string[] | null>(null)
+
+  const visibleOpenGroups = React.useMemo(
+    () =>
+      openGroups ??
+      permissionGroups.map((group) => group.key),
+    [openGroups, permissionGroups],
+  )
 
   /*
   |--------------------------------------------------------------------------
@@ -346,152 +333,7 @@ function RoleFormPage() {
   */
 
   const isSystemRole =
-    isEditMode &&
-    role?.type === "SYSTEM"
-
-  /*
-  |--------------------------------------------------------------------------
-  | Form Initialization
-  |--------------------------------------------------------------------------
-  |
-  | The API response is:
-  |
-  | {
-  |   success: true,
-  |   data: {
-  |     id: "...",
-  |     name: "USER",
-  |     permissions: [...]
-  |   }
-  | }
-  |
-  | useRole() must therefore return:
-  |
-  | response.data.data
-  |
-  | so that:
-  |
-  | role.permissions
-  |
-  | contains the assigned permissions.
-  |
-  | This effect initializes the form once per
-  | role ID and does not overwrite user changes
-  | after initialization.
-  |
-  */
-
-  const initializedRoleId =
-    React.useRef<string | null>(
-      null,
-    )
-
-  React.useEffect(() => {
-    /*
-     * Create mode.
-     *
-     * There is no role to initialize.
-     */
-    if (!isEditMode || !roleId) {
-      initializedRoleId.current = null
-
-      setName("")
-      setSelectedPermissions([])
-
-      return
-    }
-
-    /*
-     * Wait until the role has loaded.
-     */
-    if (!role) {
-      return
-    }
-
-    /*
-     * Prevent a React Query refetch from
-     * resetting the user's current changes.
-     */
-    if (
-      initializedRoleId.current ===
-      roleId
-    ) {
-      return
-    }
-
-    /*
-     * Mark this role as initialized.
-     */
-    initializedRoleId.current =
-      roleId
-
-    /*
-     * Initialize role name.
-     */
-    setName(
-      typeof role.name === "string"
-        ? role.name
-        : "",
-    )
-
-    /*
-     * Initialize assigned permissions.
-     *
-     * API:
-     *
-     * permissions: [
-     *   { id: "...", name: "dashboard.view" },
-     *   { id: "...", name: "analytics.view" }
-     * ]
-     *
-     * Form state:
-     *
-     * [
-     *   "dashboard.view",
-     *   "analytics.view"
-     * ]
-     */
-    const rolePermissionNames =
-      getRolePermissionNames(
-        role.permissions,
-      )
-
-    setSelectedPermissions(
-      rolePermissionNames,
-    )
-  }, [
-    isEditMode,
-    roleId,
-    role,
-  ])
-
-  /*
-  |--------------------------------------------------------------------------
-  | Permission Groups Initialization
-  |--------------------------------------------------------------------------
-  */
-
-  React.useEffect(() => {
-    if (
-      permissionGroups.length ===
-      0
-    ) {
-      return
-    }
-
-    setOpenGroups((current) => {
-      if (current.length > 0) {
-        return current
-      }
-
-      return permissionGroups.map(
-        (group) =>
-          group.key,
-      )
-    })
-  }, [
-    permissionGroups,
-  ])
+    isEditMode && role?.type === "SYSTEM"
 
   /*
   |--------------------------------------------------------------------------
@@ -499,11 +341,9 @@ function RoleFormPage() {
   |--------------------------------------------------------------------------
   */
 
-  const selectedCount =
-    selectedPermissions.length
+  const selectedCount = selectedPermissions.length
 
-  const normalizedName =
-    normalizeRoleName(name)
+  const normalizedName = normalizeRoleName(name)
 
   const isSubmitting =
     createRoleMutation.isPending ||
@@ -511,156 +351,165 @@ function RoleFormPage() {
 
   /*
   |--------------------------------------------------------------------------
-  | Permission Actions
+  | Form Field Actions
   |--------------------------------------------------------------------------
   */
 
-  const togglePermission =
-    React.useCallback(
-      (
-        permissionName: string,
-        checked: boolean,
-      ) => {
-        if (isSystemRole) {
-          return
+  const handleNameChange = React.useCallback(
+    (value: string) => {
+      setFormState({
+        key: formKey,
+        name: normalizeRoleName(value),
+        selectedPermissions,
+      })
+    },
+    [formKey, selectedPermissions],
+  )
+
+  const togglePermission = React.useCallback(
+    (permissionName: string, checked: boolean) => {
+      if (isSystemRole) {
+        return
+      }
+
+      setFormState((current) => {
+        const currentPermissions =
+          current.key === formKey
+            ? current.selectedPermissions
+            : initialSelectedPermissions
+
+        const currentName =
+          current.key === formKey
+            ? current.name
+            : initialName
+
+        if (checked) {
+          if (currentPermissions.includes(permissionName)) {
+            return current.key === formKey
+              ? current
+              : {
+                  key: formKey,
+                  name: currentName,
+                  selectedPermissions: currentPermissions,
+                }
+          }
+
+          return {
+            key: formKey,
+            name: currentName,
+            selectedPermissions: [
+              ...currentPermissions,
+              permissionName,
+            ],
+          }
         }
 
-        setSelectedPermissions(
-          (current) => {
-            if (checked) {
-              if (
-                current.includes(
-                  permissionName,
-                )
-              ) {
-                return current
-              }
-
-              return [
-                ...current,
-                permissionName,
-              ]
-            }
-
-            return current.filter(
-              (item) =>
-                item !==
-                permissionName,
-            )
-          },
-        )
-      },
-      [isSystemRole],
-    )
-
-  const toggleGroup =
-    React.useCallback(
-      (groupKey: string) => {
-        setOpenGroups(
-          (current) =>
-            current.includes(
-              groupKey,
-            )
-              ? current.filter(
-                  (item) =>
-                    item !==
-                    groupKey,
-                )
-              : [
-                  ...current,
-                  groupKey,
-                ],
-        )
-      },
-      [],
-    )
-
-  const isGroupFullySelected =
-    React.useCallback(
-      (
-        group: PermissionGroup,
-      ): boolean => {
-        if (
-          group.permissions
-            .length === 0
-        ) {
-          return false
+        return {
+          key: formKey,
+          name: currentName,
+          selectedPermissions: currentPermissions.filter(
+            (permission) => permission !== permissionName,
+          ),
         }
+      })
+    },
+    [
+      formKey,
+      initialName,
+      initialSelectedPermissions,
+      isSystemRole,
+    ],
+  )
 
-        return group.permissions.every(
-          (permission) =>
-            selectedPermissions.includes(
-              permission.name,
-            ),
+  const toggleGroup = React.useCallback(
+    (groupKey: string) => {
+      setOpenGroups((current) => {
+        const currentGroups =
+          current ??
+          permissionGroups.map((group) => group.key)
+
+        return currentGroups.includes(groupKey)
+          ? currentGroups.filter((key) => key !== groupKey)
+          : [...currentGroups, groupKey]
+      })
+    },
+    [permissionGroups],
+  )
+
+  const isGroupFullySelected = React.useCallback(
+    (group: PermissionGroup): boolean => {
+      if (group.permissions.length === 0) {
+        return false
+      }
+
+      return group.permissions.every((permission) =>
+        selectedPermissions.includes(permission.name),
+      )
+    },
+    [selectedPermissions],
+  )
+
+  const toggleGroupPermissions = React.useCallback(
+    (group: PermissionGroup) => {
+      if (isSystemRole) {
+        return
+      }
+
+      const permissionNames = group.permissions
+        .map((permission) => permission.name)
+        .filter(
+          (permissionName): permissionName is string =>
+            typeof permissionName === "string" &&
+            permissionName.trim().length > 0,
         )
-      },
-      [selectedPermissions],
-    )
 
-  const toggleGroupPermissions =
-    React.useCallback(
-      (
-        group: PermissionGroup,
-      ) => {
-        if (isSystemRole) {
-          return
-        }
+      if (permissionNames.length === 0) {
+        return
+      }
 
-        const permissionNames =
-          group.permissions
-            .map(
+      const fullySelected = permissionNames.every(
+        (permissionName) =>
+          selectedPermissions.includes(permissionName),
+      )
+
+      setFormState((current) => {
+        const currentPermissions =
+          current.key === formKey
+            ? current.selectedPermissions
+            : initialSelectedPermissions
+
+        const currentName =
+          current.key === formKey
+            ? current.name
+            : initialName
+
+        const nextPermissions = fullySelected
+          ? currentPermissions.filter(
               (permission) =>
-                permission.name,
+                !permissionNames.includes(permission),
             )
-            .filter(
-              (
-                name,
-              ): name is string =>
-                typeof name ===
-                  "string" &&
-                name.trim().length > 0,
-            )
-
-        if (
-          permissionNames.length ===
-          0
-        ) {
-          return
-        }
-
-        const fullySelected =
-          permissionNames.every(
-            (permissionName) =>
-              selectedPermissions.includes(
-                permissionName,
-              ),
-          )
-
-        setSelectedPermissions(
-          (current) => {
-            if (fullySelected) {
-              return current.filter(
-                (permission) =>
-                  !permissionNames.includes(
-                    permission,
-                  ),
-              )
-            }
-
-            return Array.from(
+          : Array.from(
               new Set([
-                ...current,
+                ...currentPermissions,
                 ...permissionNames,
               ]),
             )
-          },
-        )
-      },
-      [
-        isSystemRole,
-        selectedPermissions,
-      ],
-    )
+
+        return {
+          key: formKey,
+          name: currentName,
+          selectedPermissions: nextPermissions,
+        }
+      })
+    },
+    [
+      formKey,
+      initialName,
+      initialSelectedPermissions,
+      isSystemRole,
+      selectedPermissions,
+    ],
+  )
 
   /*
   |--------------------------------------------------------------------------
@@ -668,89 +517,53 @@ function RoleFormPage() {
   |--------------------------------------------------------------------------
   */
 
-  const handleSubmit =
-    async (
-      event: React.FormEvent<HTMLFormElement>,
-    ) => {
-      event.preventDefault()
+  const handleSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault()
 
-      if (isSystemRole) {
-        return
-      }
-
-      const finalName =
-        normalizeRoleName(name)
-
-      if (!finalName) {
-        return
-      }
-
-      /*
-       * Only submit permissions that
-       * currently exist in the backend
-       * permission catalog.
-       */
-      const validSelectedPermissions =
-        selectedPermissions.filter(
-          (permissionName) =>
-            availablePermissionNames.has(
-              permissionName,
-            ),
-        )
-
-      /*
-      |--------------------------------------------------------------------------
-      | Create
-      |--------------------------------------------------------------------------
-      */
-
-      if (!isEditMode) {
-        const payload: CreateRoleRequest =
-          {
-            name: finalName,
-            permissions:
-              validSelectedPermissions,
-          }
-
-        await createRoleMutation.mutateAsync(
-          payload,
-        )
-
-        router.push(
-          ROLES_URL,
-        )
-
-        return
-      }
-
-      /*
-      |--------------------------------------------------------------------------
-      | Update
-      |--------------------------------------------------------------------------
-      */
-
-      if (!roleId) {
-        return
-      }
-
-      const payload: UpdateRoleRequest =
-        {
-          name: finalName,
-          permissions:
-            validSelectedPermissions,
-        }
-
-      await updateRoleMutation.mutateAsync(
-        {
-          roleId,
-          data: payload,
-        },
-      )
-
-      router.push(
-        ROLES_URL,
-      )
+    if (isSystemRole) {
+      return
     }
+
+    const finalName = normalizeRoleName(name)
+
+    if (!finalName) {
+      return
+    }
+
+    const validSelectedPermissions =
+      selectedPermissions.filter((permissionName) =>
+        availablePermissionNames.has(permissionName),
+      )
+
+    if (!isEditMode) {
+      const payload: CreateRoleRequest = {
+        name: finalName,
+        permissions: validSelectedPermissions,
+      }
+
+      await createRoleMutation.mutateAsync(payload)
+      router.push(ROLES_URL)
+      return
+    }
+
+    if (!roleId) {
+      return
+    }
+
+    const payload: UpdateRoleRequest = {
+      name: finalName,
+      permissions: validSelectedPermissions,
+    }
+
+    await updateRoleMutation.mutateAsync({
+      roleId,
+      data: payload,
+    })
+
+    router.push(ROLES_URL)
+  }
 
   /*
   |--------------------------------------------------------------------------
@@ -759,8 +572,7 @@ function RoleFormPage() {
   */
 
   if (
-    (isEditMode &&
-      isRoleLoading) ||
+    (isEditMode && isRoleLoading) ||
     isPermissionsLoading
   ) {
     return (
@@ -771,10 +583,7 @@ function RoleFormPage() {
           aria-live="polite"
         >
           <KeyRound className="size-4 animate-pulse" />
-
-          <span>
-            Loading role permissions...
-          </span>
+          <span>Loading role permissions...</span>
         </div>
       </div>
     )
@@ -786,18 +595,13 @@ function RoleFormPage() {
   |--------------------------------------------------------------------------
   */
 
-  if (
-    isEditMode &&
-    isRoleError
-  ) {
+  if (isEditMode && isRoleError) {
     return (
       <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 p-6">
         <ShieldCheck className="size-10 text-muted-foreground" />
 
         <div className="text-center">
-          <h2 className="font-semibold">
-            Unable to load role
-          </h2>
+          <h2 className="font-semibold">Unable to load role</h2>
 
           <p className="mt-1 max-w-md text-sm text-muted-foreground">
             {roleError?.message ??
@@ -805,15 +609,9 @@ function RoleFormPage() {
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          asChild
-        >
-          <Link
-            href={ROLES_URL}
-          >
+        <Button variant="outline" asChild>
+          <Link href={ROLES_URL}>
             <ArrowLeft className="mr-2 size-4" />
-
             Back to Roles
           </Link>
         </Button>
@@ -827,9 +625,7 @@ function RoleFormPage() {
   |--------------------------------------------------------------------------
   */
 
-  if (
-    isPermissionsError
-  ) {
+  if (isPermissionsError) {
     return (
       <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 p-6">
         <KeyRound className="size-10 text-muted-foreground" />
@@ -845,15 +641,9 @@ function RoleFormPage() {
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          asChild
-        >
-          <Link
-            href={ROLES_URL}
-          >
+        <Button variant="outline" asChild>
+          <Link href={ROLES_URL}>
             <ArrowLeft className="mr-2 size-4" />
-
             Back to Roles
           </Link>
         </Button>
@@ -873,50 +663,32 @@ function RoleFormPage() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
-          <Button
-            variant="outline"
-            size="icon"
-            asChild
-          >
-            <Link
-              href={ROLES_URL}
-            >
+          <Button variant="outline" size="icon" asChild>
+            <Link href={ROLES_URL}>
               <ArrowLeft className="size-4" />
-
-              <span className="sr-only">
-                Back to roles
-              </span>
+              <span className="sr-only">Back to roles</span>
             </Link>
           </Button>
 
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">
-                {isEditMode
-                  ? "Update Role"
-                  : "Create Role"}
+                {isEditMode ? "Update Role" : "Create Role"}
               </h1>
 
-              {isEditMode &&
-                role && (
-                  <>
-                    <Badge variant="outline">
-                      {formatRoleName(
-                        role.name,
-                      )}
-                    </Badge>
+              {isEditMode && role && (
+                <>
+                  <Badge variant="outline">
+                    {formatRoleName(role.name)}
+                  </Badge>
 
-                    <Badge
-                      variant={
-                        isSystemRole
-                          ? "default"
-                          : "secondary"
-                      }
-                    >
-                      {role.type}
-                    </Badge>
-                  </>
-                )}
+                  <Badge
+                    variant={isSystemRole ? "default" : "secondary"}
+                  >
+                    {role.type}
+                  </Badge>
+                </>
+              )}
             </div>
 
             <p className="mt-1 text-sm text-muted-foreground">
@@ -936,15 +708,11 @@ function RoleFormPage() {
             <ShieldCheck className="mt-0.5 size-5 shrink-0" />
 
             <div>
-              <p className="font-medium">
-                System Role
-              </p>
+              <p className="font-medium">System Role</p>
 
               <p className="mt-1 text-sm text-muted-foreground">
-                This role is managed by the
-                system. Its name and
-                permissions cannot be
-                modified.
+                This role is managed by the system. Its name and
+                permissions cannot be modified.
               </p>
             </div>
           </CardContent>
@@ -963,34 +731,24 @@ function RoleFormPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <ShieldCheck className="size-5" />
-
-              <CardTitle>
-                Basic Information
-              </CardTitle>
+              <CardTitle>Basic Information</CardTitle>
             </div>
 
             <CardDescription>
-              Define the role name used by the
-              authorization system.
+              Define the role name used by the authorization system.
             </CardDescription>
           </CardHeader>
 
           <CardContent>
             <div className="flex max-w-2xl flex-col gap-2">
-              <Label htmlFor="role-name">
-                Role Name
-              </Label>
+              <Label htmlFor="role-name">Role Name</Label>
 
               <Input
                 id="role-name"
                 value={name}
                 disabled={isSystemRole}
                 onChange={(event) =>
-                  setName(
-                    normalizeRoleName(
-                      event.target.value,
-                    ),
-                  )
+                  handleNameChange(event.target.value)
                 }
                 placeholder="e.g. ANALYTICS_OFFICER"
                 autoComplete="off"
@@ -999,24 +757,18 @@ function RoleFormPage() {
               />
 
               <p className="text-xs text-muted-foreground">
-                Use uppercase letters,
-                numbers, and underscores.
-                Example:
-                ANALYTICS_OFFICER.
+                Use uppercase letters, numbers, and underscores.
+                Example: ANALYTICS_OFFICER.
               </p>
 
-              {name.trim() &&
-                normalizedName !==
-                  name && (
-                  <p className="text-xs text-muted-foreground">
-                    Will be saved as:{" "}
-                    <span className="font-mono font-medium">
-                      {
-                        normalizedName
-                      }
-                    </span>
-                  </p>
-                )}
+              {name.trim() && normalizedName !== name && (
+                <p className="text-xs text-muted-foreground">
+                  Will be saved as:{" "}
+                  <span className="font-mono font-medium">
+                    {normalizedName}
+                  </span>
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1024,8 +776,6 @@ function RoleFormPage() {
         {/* Summary */}
 
         <div className="grid gap-4 sm:grid-cols-3">
-          {/* Role Type */}
-
           <Card>
             <CardContent className="flex items-center gap-3 p-5">
               <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
@@ -1036,17 +786,12 @@ function RoleFormPage() {
                 <p className="text-sm text-muted-foreground">
                   Role Type
                 </p>
-
                 <p className="font-semibold">
-                  {isSystemRole
-                    ? "System Role"
-                    : "Custom Role"}
+                  {isSystemRole ? "System Role" : "Custom Role"}
                 </p>
               </div>
             </CardContent>
           </Card>
-
-          {/* Permission Count */}
 
           <Card>
             <CardContent className="flex items-center gap-3 p-5">
@@ -1058,15 +803,10 @@ function RoleFormPage() {
                 <p className="text-sm text-muted-foreground">
                   Selected Permissions
                 </p>
-
-                <p className="font-semibold">
-                  {selectedCount}
-                </p>
+                <p className="font-semibold">{selectedCount}</p>
               </div>
             </CardContent>
           </Card>
-
-          {/* Users */}
 
           <Card>
             <CardContent className="flex items-center gap-3 p-5">
@@ -1078,7 +818,6 @@ function RoleFormPage() {
                 <p className="text-sm text-muted-foreground">
                   Assigned Users
                 </p>
-
                 <p className="font-semibold">
                   {isEditMode
                     ? `${role?.users_count ?? 0} users`
@@ -1095,13 +834,10 @@ function RoleFormPage() {
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle>
-                  Permissions
-                </CardTitle>
+                <CardTitle>Permissions</CardTitle>
 
                 <CardDescription>
-                  Select the permissions this role
-                  should have.
+                  Select the permissions this role should have.
                 </CardDescription>
               </div>
 
@@ -1112,184 +848,134 @@ function RoleFormPage() {
           </CardHeader>
 
           <CardContent className="flex flex-col gap-4">
-            {permissionGroups.map(
-              (group) => {
-                const isOpen =
-                  openGroups.includes(
-                    group.key,
-                  )
+            {permissionGroups.map((group) => {
+              const isOpen = visibleOpenGroups.includes(group.key)
 
-                const isFullySelected =
-                  isGroupFullySelected(
-                    group,
-                  )
+              const isFullySelected =
+                isGroupFullySelected(group)
 
-                return (
-                  <div
-                    key={group.key}
-                    className="overflow-hidden rounded-lg border"
-                  >
-                    {/* Group Header */}
+              return (
+                <div
+                  key={group.key}
+                  className="overflow-hidden rounded-lg border"
+                >
+                  {/* Group Header */}
 
-                    <div className="flex items-center justify-between gap-3 bg-muted/30 px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          toggleGroup(
-                            group.key,
-                          )
-                        }
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                        aria-expanded={
-                          isOpen
-                        }
-                        aria-controls={`permission-group-${group.key}`}
-                      >
-                        <ChevronDown
-                          className={`size-4 shrink-0 transition-transform ${
-                            isOpen
-                              ? ""
-                              : "-rotate-90"
-                          }`}
-                        />
+                  <div className="flex items-center justify-between gap-3 bg-muted/30 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.key)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      aria-expanded={isOpen}
+                      aria-controls={`permission-group-${group.key}`}
+                    >
+                      <ChevronDown
+                        className={`size-4 shrink-0 transition-transform ${
+                          isOpen ? "" : "-rotate-90"
+                        }`}
+                      />
 
-                        <div className="min-w-0">
-                          <p className="font-medium">
-                            {
-                              group.label
-                            }
+                      <div className="min-w-0">
+                        <p className="font-medium">{group.label}</p>
+
+                        {group.description && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {group.description}
                           </p>
-
-                          {group.description && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {
-                                group.description
-                              }
-                            </p>
-                          )}
-                        </div>
-                      </button>
-
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={
-                          isSystemRole ||
-                          group.permissions
-                            .length ===
-                            0
-                        }
-                        onClick={() =>
-                          toggleGroupPermissions(
-                            group,
-                          )
-                        }
-                      >
-                        {isFullySelected
-                          ? "Clear"
-                          : "Select All"}
-                      </Button>
-                    </div>
-
-                    {/* Group Permissions */}
-
-                    {isOpen && (
-                      <div
-                        id={`permission-group-${group.key}`}
-                        className="divide-y"
-                      >
-                        {group.permissions.map(
-                          (
-                            permission,
-                          ) => {
-                            const isSelected =
-                              selectedPermissions.includes(
-                                permission.name,
-                              )
-
-                            return (
-                              <div
-                                key={
-                                  permission.id
-                                }
-                                className="flex flex-col gap-3 px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
-                              >
-                                <div className="min-w-0">
-                                  <p className="font-medium">
-                                    {
-                                      permission.label
-                                    }
-                                  </p>
-
-                                  {permission.description && (
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                      {
-                                        permission.description
-                                      }
-                                    </p>
-                                  )}
-
-                                  <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
-                                    {
-                                      permission.name
-                                    }
-                                  </p>
-                                </div>
-
-                                <label
-                                  className={`flex shrink-0 items-center gap-2 text-sm ${
-                                    isSystemRole
-                                      ? "cursor-not-allowed opacity-60"
-                                      : "cursor-pointer"
-                                  }`}
-                                >
-                                  <Checkbox
-                                    checked={
-                                      isSelected
-                                    }
-                                    disabled={
-                                      isSystemRole
-                                    }
-                                    onCheckedChange={(
-                                      checked,
-                                    ) => {
-                                      if (
-                                        checked ===
-                                          true ||
-                                        checked ===
-                                          false
-                                      ) {
-                                        togglePermission(
-                                          permission.name,
-                                          checked,
-                                        )
-                                      }
-                                    }}
-                                    aria-label={`Grant ${permission.name}`}
-                                  />
-
-                                  <span>
-                                    {
-                                      permission.action_label
-                                    }
-                                  </span>
-                                </label>
-                              </div>
-                            )
-                          },
                         )}
                       </div>
-                    )}
+                    </button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        isSystemRole ||
+                        group.permissions.length === 0
+                      }
+                      onClick={() =>
+                        toggleGroupPermissions(group)
+                      }
+                    >
+                      {isFullySelected ? "Clear" : "Select All"}
+                    </Button>
                   </div>
-                )
-              },
-            )}
 
-            {/* Empty */}
+                  {/* Group Permissions */}
 
-            {permissionGroups.length ===
-              0 && (
+                  {isOpen && (
+                    <div
+                      id={`permission-group-${group.key}`}
+                      className="divide-y"
+                    >
+                      {group.permissions.map((permission) => {
+                        const isSelected =
+                          selectedPermissions.includes(
+                            permission.name,
+                          )
+
+                        return (
+                          <div
+                            key={permission.id}
+                            className="flex flex-col gap-3 px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-medium">
+                                {permission.label}
+                              </p>
+
+                              {permission.description && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {permission.description}
+                                </p>
+                              )}
+
+                              <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
+                                {permission.name}
+                              </p>
+                            </div>
+
+                            <label
+                              className={`flex shrink-0 items-center gap-2 text-sm ${
+                                isSystemRole
+                                  ? "cursor-not-allowed opacity-60"
+                                  : "cursor-pointer"
+                              }`}
+                            >
+                              <Checkbox
+                                checked={isSelected}
+                                disabled={isSystemRole}
+                                onCheckedChange={(checked) => {
+                                  if (
+                                    checked === true ||
+                                    checked === false
+                                  ) {
+                                    togglePermission(
+                                      permission.name,
+                                      checked,
+                                    )
+                                  }
+                                }}
+                                aria-label={`Grant ${permission.name}`}
+                              />
+
+                              <span>
+                                {permission.action_label}
+                              </span>
+                            </label>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Empty State */}
+
+            {permissionGroups.length === 0 && (
               <div className="rounded-lg border border-dashed p-8 text-center">
                 <KeyRound className="mx-auto size-8 text-muted-foreground" />
 
@@ -1298,9 +984,8 @@ function RoleFormPage() {
                 </p>
 
                 <p className="mt-1 text-sm text-muted-foreground">
-                  No API permissions are
-                  currently available for
-                  role assignment.
+                  No API permissions are currently available for role
+                  assignment.
                 </p>
               </div>
             )}
@@ -1310,16 +995,8 @@ function RoleFormPage() {
         {/* Actions */}
 
         <div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            asChild
-          >
-            <Link
-              href={ROLES_URL}
-            >
-              Cancel
-            </Link>
+          <Button type="button" variant="outline" asChild>
+            <Link href={ROLES_URL}>Cancel</Link>
           </Button>
 
           <Button
@@ -1335,10 +1012,7 @@ function RoleFormPage() {
             ) : (
               <>
                 <Check className="mr-2 size-4" />
-
-                {isEditMode
-                  ? "Update Role"
-                  : "Create Role"}
+                {isEditMode ? "Update Role" : "Create Role"}
               </>
             )}
           </Button>
@@ -1349,4 +1023,3 @@ function RoleFormPage() {
 }
 
 export default RoleFormPage
-

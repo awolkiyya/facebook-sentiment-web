@@ -1,4 +1,7 @@
+
 "use client"
+
+import type { ReactNode } from "react"
 
 import {
   BadgeCheck,
@@ -13,9 +16,7 @@ import {
   AvatarFallback,
 } from "@/components/ui/avatar"
 
-import {
-  Badge,
-} from "@/components/ui/badge"
+import { Badge } from "@/components/ui/badge"
 
 import {
   Card,
@@ -27,7 +28,7 @@ import {
 /* -------------------------------------------------------------------------- */
 
 export interface FacebookPostSummaryProps {
-  postDate: string
+  postDate: string | null
   postMessage: string
 
   postLikes: number
@@ -54,6 +55,10 @@ export function FacebookPostSummary({
   formatNumber,
   className,
 }: FacebookPostSummaryProps) {
+  const formattedDate = postDate
+    ? formatDate(postDate)
+    : "Date unavailable"
+
   return (
     <Card
       className={[
@@ -64,10 +69,7 @@ export function FacebookPostSummary({
         .join(" ")}
     >
       <CardContent className="p-0">
-        {/* ------------------------------------------------------------------ */}
-        {/* Source                                                             */}
-        {/* ------------------------------------------------------------------ */}
-
+        {/* Source */}
         <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <Avatar className="h-9 w-9 shrink-0">
@@ -88,13 +90,13 @@ export function FacebookPostSummary({
                 />
               </div>
 
-              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <Clock3 className="h-3 w-3" />
-                  {formatDate(postDate)}
+                  <Clock3 className="h-3 w-3 shrink-0" />
+                  {formattedDate}
                 </span>
 
-                <span className="text-border">
+                <span className="text-border" aria-hidden="true">
                   •
                 </span>
 
@@ -114,20 +116,14 @@ export function FacebookPostSummary({
           </Badge>
         </div>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Post message                                                       */}
-        {/* ------------------------------------------------------------------ */}
-
+        {/* Post message */}
         <div className="px-4 pb-4 sm:px-5 sm:pb-5">
-          <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">
-            {postMessage}
+          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/90">
+            {postMessage.trim() || "This post has no text content."}
           </p>
         </div>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Engagement                                                         */}
-        {/* ------------------------------------------------------------------ */}
-
+        {/* Engagement */}
         <div className="border-t bg-muted/20 px-4 py-3 sm:px-5">
           <div className="flex items-center gap-5 sm:gap-7">
             <EngagementMetric
@@ -160,7 +156,7 @@ export function FacebookPostSummary({
 /* -------------------------------------------------------------------------- */
 
 interface EngagementMetricProps {
-  icon: React.ReactNode
+  icon: ReactNode
   value: string
   label: string
   emphasized?: boolean

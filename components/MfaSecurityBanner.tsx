@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ArrowRight, ShieldCheck, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 interface MfaSecurityBannerProps {
@@ -15,7 +16,17 @@ export default function MfaSecurityBanner({
   mfaEnabled = false,
   onSetup,
 }: MfaSecurityBannerProps) {
+  const router = useRouter();
   const [dismissed, setDismissed] = useState(false);
+
+  const handleSetup = () => {
+    if (onSetup) {
+      onSetup();
+      return;
+    }
+
+    router.push("/or/settings/security/mfa");
+  };
 
   if (!mfaRequired || mfaEnabled || dismissed) {
     return null;
@@ -55,11 +66,7 @@ export default function MfaSecurityBanner({
 
         <motion.button
           type="button"
-          onClick={() =>
-            onSetup
-              ? onSetup()
-              : (window.location.href = "/or/settings/security/mfa")
-          }
+          onClick={handleSetup}
           whileTap={{ scale: 0.98 }}
           className="group inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90"
         >

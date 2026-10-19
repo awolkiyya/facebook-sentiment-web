@@ -528,46 +528,6 @@ function NavSearch({
   );
 }
 
-/* =====================================================
-   SYNC STATUS
-
-   Replaces the decorative product card. Same footprint,
-   but it answers a question people actually have: is the
-   data I'm reading current?
-===================================================== */
-
-function SyncStatus({
-  lastSyncedLabel,
-  stale,
-}: {
-  lastSyncedLabel: string;
-  stale?: boolean;
-}) {
-  return (
-    <div className="px-2 pb-1 group-data-[collapsible=icon]:hidden">
-      <div
-        className="
-          flex items-center gap-2 rounded-lg border
-          border-sidebar-border bg-muted/40 px-2.5 py-2
-        "
-      >
-        <span
-          aria-hidden="true"
-          className={`
-            size-1.5 shrink-0 rounded-full
-            ${stale ? "bg-amber-500" : "bg-emerald-500"}
-          `}
-        />
-
-        <span className="truncate text-[11px] text-muted-foreground">
-          {stale
-            ? `Sync paused · ${lastSyncedLabel}`
-            : `Synced ${lastSyncedLabel}`}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 /* =====================================================
    APP SIDEBAR

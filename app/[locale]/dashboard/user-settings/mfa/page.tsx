@@ -1,7 +1,6 @@
 "use client";
 
-import React, {
-  useEffect,
+import{
   useState,
 } from "react";
 
@@ -188,10 +187,7 @@ export default function MfaSecurityPage() {
       "Municipal Social Analytics",
     );
 
-  const [account, setAccount] =
-    useState(
-      user?.email ?? "",
-    );
+   const [account, setAccount] = useState(user?.email ?? "");
 
   const [code, setCode] =
     useState("");
@@ -238,23 +234,14 @@ export default function MfaSecurityPage() {
     code.length === 6 &&
     !loading;
 
-  // =========================================================
-  // KEEP ACCOUNT IN SYNC
-  // =========================================================
+ // =========================================================
+// DERIVED ACCOUNT DISPLAY
+// =========================================================
 
-  useEffect(() => {
-    if (
-      user?.email &&
-      step === "idle"
-    ) {
-      setAccount(
-        user.email,
-      );
-    }
-  }, [
-    user?.email,
-    step,
-  ]);
+const displayedAccount =
+step === "idle" && user?.email
+  ? user.email
+  : account;
 
   // =========================================================
   // CLIPBOARD HELPER
@@ -1009,15 +996,15 @@ export default function MfaSecurityPage() {
               ================================================= */}
 
               <div className="mt-4 grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Account
-                  </p>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Account
+                </p>
 
-                  <p className="mt-1 truncate text-sm">
-                    {account}
-                  </p>
-                </div>
+                <p className="mt-1 truncate text-sm">
+                  {displayedAccount}
+                </p>
+              </div>
 
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">
@@ -1151,7 +1138,7 @@ export default function MfaSecurityPage() {
 
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">
-                      Can't scan the QR code?
+                      Cant scan the QR code?
                     </p>
 
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
@@ -1617,7 +1604,7 @@ export default function MfaSecurityPage() {
               {mfaRequired && (
                 <p className="text-center text-xs leading-5 text-muted-foreground">
                   Two-factor authentication is required
-                  by your organization's security policy
+                  by your organizations security policy
                   and cannot be disabled from this page.
                 </p>
               )}

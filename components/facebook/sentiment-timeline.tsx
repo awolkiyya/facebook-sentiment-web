@@ -95,12 +95,6 @@ function formatAverage(value: number) {
   return Number(value).toFixed(2)
 }
 
-function getTotalComments(data: SentimentTimelineItem[]) {
-  return data.reduce(
-    (sum, item) => sum + item.total,
-    0,
-  )
-}
 
 /* -------------------------------------------------------------------------- */
 /* Component                                                                  */
@@ -112,9 +106,7 @@ export function SentimentTimeline({
 }: SentimentTimelineProps) {
   const hasData = data.length > 0
 
-  const totalComments = hasData
-    ? getTotalComments(data)
-    : 0
+ 
 
   return (
     <Card

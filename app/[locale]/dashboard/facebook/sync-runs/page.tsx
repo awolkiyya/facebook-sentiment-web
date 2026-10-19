@@ -350,21 +350,26 @@ export default function FacebookSyncRunsPage() {
   const selectedRunIsActive =
     selectedRun != null && isActiveStatus(selectedRun.status)
 
-  useEffect(() => {
-    if (!hasActiveRun && !selectedRunIsActive) return
-
-    setNow(Date.now())
-    const intervalId = window.setInterval(() => setNow(Date.now()), 1000)
-
-    return () => window.clearInterval(intervalId)
-  }, [hasActiveRun, selectedRunIsActive])
+    useEffect(() => {
+      if (!hasActiveRun && !selectedRunIsActive) return
+    
+      const intervalId = window.setInterval(() => {
+        setNow(Date.now())
+      }, 1000)
+    
+      return () => window.clearInterval(intervalId)
+    }, [hasActiveRun, selectedRunIsActive])
 
   /* Keep pagination valid */
-  useEffect(() => {
-    if (runsResponse && page > totalPages) {
-      setPage(totalPages)
-    }
-  }, [page, totalPages, runsResponse])
+  // useEffect(() => {
+  //   if (runsResponse && page > totalPages) {
+  //     setPage(totalPages)
+  //   }
+  // }, [page, totalPages, runsResponse])
+
+  /* Keep pagination valid */
+  // setPage(Math.min(page, totalPages))
+// const currentPage = Math.min(page, totalPages)
 
   /* Derived */
   const failedCount = runs.filter((run) => run.status === "failed").length

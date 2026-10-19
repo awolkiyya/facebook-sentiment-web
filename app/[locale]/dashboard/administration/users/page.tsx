@@ -223,13 +223,13 @@ function UsersPage() {
    */
 
   const currentPage =
-    meta?.current_page ?? 1
+    meta?.pagination?.current_page ?? 1
 
   const lastPage =
-    meta?.last_page ?? 1
+    meta?.pagination?.last_page ?? 1
 
   const totalUsers =
-    meta?.total ?? 0
+    meta?.pagination?.total ?? 0
 
   /*
    * --------------------------------------------------------------------------
@@ -864,15 +864,15 @@ function UsersPage() {
               <p className="text-sm text-muted-foreground">
                 Showing{" "}
                 <span className="font-medium text-foreground">
-                  {meta.from ?? 0}
+                  { meta?.pagination?.from ?? 0}
                 </span>{" "}
                 to{" "}
                 <span className="font-medium text-foreground">
-                  {meta.to ?? 0}
+                  { meta?.pagination?.to ?? 0}
                 </span>{" "}
                 of{" "}
                 <span className="font-medium text-foreground">
-                  {meta.total}
+                  { meta?.pagination?.total}
                 </span>{" "}
                 users
               </p>
