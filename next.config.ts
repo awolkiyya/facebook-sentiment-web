@@ -1,3 +1,4 @@
+
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
@@ -6,6 +7,9 @@ const withNextIntl = createNextIntlPlugin(
 );
 
 const nextConfig: NextConfig = {
+  // Required for the production Docker standalone runner.
+  output: "standalone",
+
   reactStrictMode: true,
 
   // --------------------------------------------------------
@@ -24,7 +28,6 @@ const nextConfig: NextConfig = {
 
   async rewrites() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
     if (!apiUrl) {
@@ -40,58 +43,14 @@ const nextConfig: NextConfig = {
     }
 
     return [
-      /*
-      |--------------------------------------------------------------------------
-      | Laravel API
-      |--------------------------------------------------------------------------
-      |
-      | Browser:
-      |   /api/v1/...
-      |
-      | Laravel:
-      |   /api/v1/...
-      |
-      |--------------------------------------------------------------------------
-      */
-
       {
         source: "/api/:path*",
         destination: `${apiUrl}/api/:path*`,
       },
-
-      /*
-      |--------------------------------------------------------------------------
-      | Laravel Sanctum
-      |--------------------------------------------------------------------------
-      |
-      | Browser:
-      |   /sanctum/csrf-cookie
-      |
-      | Laravel:
-      |   /sanctum/csrf-cookie
-      |
-      |--------------------------------------------------------------------------
-      */
-
       {
         source: "/sanctum/:path*",
         destination: `${apiUrl}/sanctum/:path*`,
       },
-
-      /*
-      |--------------------------------------------------------------------------
-      | Ollama / AI
-      |--------------------------------------------------------------------------
-      |
-      | Browser:
-      |   /ai/...
-      |
-      | Ollama:
-      |   http://192.168.3.1:11434/...
-      |
-      |--------------------------------------------------------------------------
-      */
-
       {
         source: "/ai/:path*",
         destination: `${baseUrl}:11434/:path*`,
