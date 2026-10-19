@@ -21,8 +21,16 @@ services:
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
 
-    ports:
-      - "127.0.0.1:3000:3000"
+    networks:
+      - traefik-public
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.sentiment-web.rule=Host(`196.190.216.57`)"
+      - "traefik.http.routers.sentiment-web.entrypoints=web"
+      - "traefik.http.routers.sentiment-web.priority=1"
+      - "traefik.http.services.sentiment-web.loadbalancer.server.port=3000"
 
 networks:
   traefik-public:
