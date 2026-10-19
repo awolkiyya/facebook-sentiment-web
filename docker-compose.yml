@@ -27,9 +27,21 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-public"
+
+      # HTTP router
       - "traefik.http.routers.sentiment-web.rule=Host(`196.190.216.57`)"
       - "traefik.http.routers.sentiment-web.entrypoints=web"
       - "traefik.http.routers.sentiment-web.priority=1"
+      - "traefik.http.routers.sentiment-web.service=sentiment-web"
+
+      # HTTPS router
+      - "traefik.http.routers.sentiment-web-secure.rule=Host(`196.190.216.57`)"
+      - "traefik.http.routers.sentiment-web-secure.entrypoints=websecure"
+      - "traefik.http.routers.sentiment-web-secure.priority=1"
+      - "traefik.http.routers.sentiment-web-secure.tls=true"
+      - "traefik.http.routers.sentiment-web-secure.service=sentiment-web"
+
+      # Next.js service
       - "traefik.http.services.sentiment-web.loadbalancer.server.port=3000"
 
 networks:
