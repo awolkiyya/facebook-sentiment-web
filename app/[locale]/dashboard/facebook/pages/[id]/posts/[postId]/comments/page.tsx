@@ -68,6 +68,7 @@ import { FacebookPostSummary } from "@/components/facebook/FacebookPostSummary"
 import {
   AnalysisStatusFilter,
   AnalysisStatusOption,
+  CommenterFilter,
   CommentsSection,
   LanguageFilter,
 } from "@/components/facebook/comments-section"
@@ -991,6 +992,7 @@ function PostComments() {
   const [sortMode, setSortMode] = useState<CommentSortMode>("newest")
   const [analysisStatusFilter, setAnalysisStatusFilter] =
   useState<CommentAnalysisStatus | "all">("all")
+  const [commenterFilter, setCommenterFilter] = useState<CommenterFilter>("all")
 
   const [dateRange, setDateRange] = useState<DateRange>("30d")
   const [customFrom, setCustomFrom] = useState("")
@@ -1848,31 +1850,34 @@ function PostComments() {
          
           {/* Comments */}
           <CommentsSection
-            comments={commentsQuery.data?.data ?? []}
-            totalComments={commentsQuery.data?.meta.pagination?.total ?? 0}
-            search={search}
-            sentimentFilter={sentimentFilter}
-            languageFilter={languageFilter}
-            analysisStatusFilter={analysisStatusFilter}
-            sortMode={sortMode}
-            analysisStatusOptions={analysisStatusOptions}
-            isCommentsLoading={commentsQuery.isPending}
-            onSearchChange={setSearch}
-            onSentimentChange={setSentimentFilter}
-            onLanguageChange={setLanguageFilter}
-            onAnalysisStatusChange={setAnalysisStatusFilter}
-            onSortChange={setSortMode}
-            onClearFilters={() => {
-              setSearch("")
-              setSentimentFilter("all")
-              setLanguageFilter("all")
-              setAnalysisStatusFilter("all")
-              setSortMode("newest")
-              setDateRange("all")
-              setCustomFrom("")
-              setCustomTo("")
-            }}
-          />
+              comments={commentsQuery.data?.data ?? []}
+              totalComments={commentsQuery.data?.meta.pagination?.total ?? 0}
+              search={search}
+              sentimentFilter={sentimentFilter}
+              languageFilter={languageFilter}
+              analysisStatusFilter={analysisStatusFilter}
+              commenterFilter={commenterFilter}
+              sortMode={sortMode}
+              analysisStatusOptions={analysisStatusOptions}
+              isCommentsLoading={commentsQuery.isPending}
+              onSearchChange={setSearch}
+              onSentimentChange={setSentimentFilter}
+              onLanguageChange={setLanguageFilter}
+              onAnalysisStatusChange={setAnalysisStatusFilter}
+              onCommenterChange={setCommenterFilter}
+              onSortChange={setSortMode}
+              onClearFilters={() => {
+                setSearch("")
+                setSentimentFilter("all")
+                setLanguageFilter("all")
+                setAnalysisStatusFilter("all")
+                setCommenterFilter("all")
+                setSortMode("newest")
+                setDateRange("all")
+                setCustomFrom("")
+                setCustomTo("")
+              }}
+            />
 
 
           <div className="h-10" />

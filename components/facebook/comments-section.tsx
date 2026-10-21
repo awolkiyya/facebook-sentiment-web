@@ -33,6 +33,14 @@ export type SentimentFilter = "all" | SentimentLabel
 export type LanguageFilter = "all" | LanguageCode
 export type AnalysisStatusFilter = "all" | CommentAnalysisStatus
 
+/** "repeat" = authors with 2+ comments on this post, "single" = exactly 1. */
+export type CommenterFilter = "all" | "repeat" | "single"
+
+/** Backend should return how many comments this author has on the post. */
+type CommentWithAuthorCount = FacebookComment & {
+  author_comment_count?: number | null
+}
+
 export interface AnalysisStatusOption {
   value: CommentAnalysisStatus
   label: string
@@ -47,6 +55,10 @@ export interface CommentsSectionProps {
   languageFilter: LanguageFilter
   analysisStatusFilter: AnalysisStatusFilter
   sortMode: CommentSortMode
+
+  /** Optional: when omitted, the Commenters filter is hidden. */
+  commenterFilter?: CommenterFilter
+  onCommenterChange?: (value: CommenterFilter) => void
 
   analysisStatusOptions: AnalysisStatusOption[]
   isCommentsLoading?: boolean
@@ -139,6 +151,8 @@ export function CommentsSection({
   languageFilter,
   analysisStatusFilter,
   sortMode,
+  commenterFilter = "all",
+  onCommenterChange,
   analysisStatusOptions,
   isCommentsLoading = false,
   onSearchChange,
@@ -149,11 +163,14 @@ export function CommentsSection({
   onClearFilters,
   className,
 }: CommentsSectionProps) {
+  const showCommenterFilter = Boolean(onCommenterChange)
+
   const hasActiveFilters =
     search.trim().length > 0 ||
     sentimentFilter !== "all" ||
     languageFilter !== "all" ||
-    analysisStatusFilter !== "all"
+    analysisStatusFilter !== "all" ||
+    commenterFilter !== "all"
 
   const canReset = hasActiveFilters || sortMode !== "newest"
 
@@ -210,7 +227,12 @@ export function CommentsSection({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <div
+            className={[
+              "grid grid-cols-2 gap-2",
+              showCommenterFilter ? "lg:grid-cols-5" : "lg:grid-cols-4",
+            ].join(" ")}
+          >
             <Select
               value={sentimentFilter}
               onValueChange={(v) => onSentimentChange(v as SentimentFilter)}
@@ -260,6 +282,22 @@ export function CommentsSection({
                 ))}
               </SelectContent>
             </Select>
+
+            {showCommenterFilter && (
+              <Select
+                value={commenterFilter}
+                onValueChange={(v) => onCommenterChange?.(v as CommenterFilter)}
+              >
+                <SelectTrigger className="h-10 w-full bg-background" aria-label="Commenters">
+                  <SelectValue placeholder="Commenters" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All commenters</SelectItem>
+                  <SelectItem value="repeat">Repeat commenters (2+)</SelectItem>
+                  <SelectItem value="single">Single comment only</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
 
             <Select
               value={sortMode}
@@ -343,8 +381,11 @@ export function CommentsSection({
 /* Comment row                                                                */
 /* -------------------------------------------------------------------------- */
 
-function CommentRow({ comment }: { comment: FacebookComment }) {
+function CommentRow({ comment }: { comment: CommentWithAuthorCount }) {
   const authorName = comment.author?.name?.trim() || "Unknown commenter"
+
+  const authorCommentCount = comment.author_comment_count ?? 0
+  const isRepeatCommenter = authorCommentCount >= 2
 
   const sentimentRaw = comment.ai_analysis?.sentiment?.label
   const sentiment = isSentimentLabel(sentimentRaw) ? sentimentRaw : null
@@ -378,7 +419,18 @@ function CommentRow({ comment }: { comment: FacebookComment }) {
           {/* Author, date, sentiment */}
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{authorName}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate text-sm font-semibold">{authorName}</p>
+                {isRepeatCommenter && (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-300"
+                    title="Number of comments this person has written on this post"
+                  >
+                    {authorCommentCount} comments on this post
+                  </Badge>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {comment.commented_at
                   ? formatDate(comment.commented_at)
