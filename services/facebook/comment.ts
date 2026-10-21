@@ -17,8 +17,14 @@ import type {
 
 const DEFAULT_QUERY_PARAMS: Required<FacebookCommentsQueryParams> = {
   page: 1,
-  per_page: 100,
-  sort_by: "newest",
+  perPage: 100,
+  sortBy: "newest",
+  search: "",
+  sentiment: "negative",
+  language: "am",
+  analysisStatus: "pending",
+  startDate: "",
+  endDate: ""
 }
 
 /* -------------------------------------------------------------------------- */

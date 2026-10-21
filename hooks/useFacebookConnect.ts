@@ -521,7 +521,7 @@ export function useFacebook() {
           facebookPostId,
           {
             page: commentsPagination.current_page,
-            per_page: commentsPagination.per_page,
+            perPage: commentsPagination.per_page,
           },
         )
 

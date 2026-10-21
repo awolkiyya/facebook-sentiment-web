@@ -1,4 +1,5 @@
-import type { LanguageCode, SentimentLabel } from "./common"
+import type { CommentAnalysisStatus, CommentSortMode, LanguageCode, SentimentLabel } from "./common"
+
 
 export interface FacebookCommentAuthor {
   name: string | null
@@ -6,7 +7,7 @@ export interface FacebookCommentAuthor {
 }
 
 export interface FacebookCommentEngagement {
-  likes: number
+  like_count: number
 }
 
 export interface FacebookCommentSentimentScores {
@@ -17,19 +18,22 @@ export interface FacebookCommentSentimentScores {
 
 export interface FacebookCommentAIAnalysis {
   sentiment: {
-    label: SentimentLabel
-    confidence: number | null
+    label: SentimentLabel;
+    confidence: number | null;
+    scores: FacebookCommentSentimentScores;
+  };
 
-    scores: FacebookCommentSentimentScores
-  }
+  language: LanguageCode;
 
-  language: LanguageCode
+  topic: string | null;
+  topic_confidence: number | null;
 
-  processing_time_ms: number | null
+  priority: string | null;
+  priority_confidence: number | null;
 
-  analyzed_at: string | null
-
-  sentiment_model_version_id: string
+  processing_time_ms: number | null;
+  analyzed_at: string | null;
+  sentiment_model_version_id: string | null;
 }
 
 export interface FacebookComment {
@@ -83,10 +87,18 @@ export interface FacebookComment {
 */
 
 export interface FacebookCommentsQueryParams {
-  per_page?: number
   page?: number
-  sort_by?:string
+  perPage?: number
+  sortBy?: CommentSortMode
+  search?: string
+  sentiment?: SentimentLabel
+  language?: LanguageCode
+  analysisStatus?: CommentAnalysisStatus
+  startDate?: string
+  endDate?: string
 }
+
+
 
 /*
 |--------------------------------------------------------------------------

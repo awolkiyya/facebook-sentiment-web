@@ -1,9 +1,10 @@
 
 import { api } from "@/lib/api/api"
+import { PaginatedResponse } from "@/types/api"
+import { FacebookComment, FacebookCommentsQueryParams } from "@/types/facebook/comment"
 
 import type {
   CommentsQueryParams,
-  FacebookComment,
   PaginatedCommentsResponse,
   PostCommentsAnalytics,
   PostCommentsAnalyticsResponse,
@@ -33,14 +34,43 @@ function getPostCommentsPath(
   ].join("/")
 }
 
+
 /* -------------------------------------------------------------------------- */
 /* Query Parameters                                                           */
 /* -------------------------------------------------------------------------- */
 
 function buildQueryParams(
-  params: CommentsQueryParams,
+  params: FacebookCommentsQueryParams,
 ): URLSearchParams {
   const query = new URLSearchParams()
+
+  const startDate = params.startDate?.trim()
+  const endDate = params.endDate?.trim()
+
+  const isValidDate = (value: string): boolean => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return false
+    }
+
+    const date = new Date(`${value}T00:00:00.000Z`)
+
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.toISOString().slice(0, 10) === value
+    )
+  }
+
+  if (startDate && !isValidDate(startDate)) {
+    throw new Error("Invalid start date. Expected YYYY-MM-DD.")
+  }
+
+  if (endDate && !isValidDate(endDate)) {
+    throw new Error("Invalid end date. Expected YYYY-MM-DD.")
+  }
+
+  if (startDate && endDate && startDate > endDate) {
+    throw new Error("End date must be on or after start date.")
+  }
 
   if (params.page !== undefined) {
     query.set("page", String(params.page))
@@ -70,12 +100,12 @@ function buildQueryParams(
     query.set("sort_by", params.sortBy)
   }
 
-  if (params.startDate) {
-    query.set("start_date", params.startDate)
+  if (startDate) {
+    query.set("start_date", startDate)
   }
 
-  if (params.endDate) {
-    query.set("end_date", params.endDate)
+  if (endDate) {
+    query.set("end_date", endDate)
   }
 
   return query
@@ -108,72 +138,7 @@ function getErrorMessage(error: unknown): string {
   return "An unexpected error occurred while communicating with the API."
 }
 
-/* -------------------------------------------------------------------------- */
-/* Response Normalization                                                     */
-/* -------------------------------------------------------------------------- */
 
-function normalizePaginatedCommentsResponse(
-  response: unknown,
-): PaginatedCommentsResponse {
-  const payload = response as {
-    data?:
-      | FacebookComment[]
-      | {
-          data?: FacebookComment[]
-        }
-    meta?: {
-      current_page?: number
-      per_page?: number
-      total?: number
-      last_page?: number
-      pagination?: {
-        current_page?: number
-        per_page?: number
-        total?: number
-        last_page?: number
-      }
-    }
-    current_page?: number
-    per_page?: number
-    total?: number
-    last_page?: number
-  }
-
-  const nested = Array.isArray(payload.data)
-    ? payload.data
-    : payload.data?.data ?? []
-
-  const pagination = payload.meta?.pagination ?? payload.meta
-
-  const currentPage = Number(
-    pagination?.current_page ?? payload.current_page ?? 1,
-  )
-
-  const perPage = Number(
-    pagination?.per_page ?? payload.per_page ?? nested.length,
-  )
-
-  const total = Number(
-    pagination?.total ?? payload.total ?? nested.length,
-  )
-
-  const lastPage = Number(
-    pagination?.last_page ??
-      payload.last_page ??
-      Math.max(1, Math.ceil(total / Math.max(perPage, 1))),
-  )
-
-  return {
-    data: nested,
-    meta: {
-      currentPage,
-      perPage,
-      total,
-      lastPage,
-      hasMorePages: currentPage < lastPage,
-    },
-  }
-}
 
 /* -------------------------------------------------------------------------- */
 /* Service                                                                    */
@@ -192,8 +157,8 @@ export const postCommentsAnalyticsService = {
   async getComments(
     facebookPageId: string,
     facebookPostId: string,
-    params: CommentsQueryParams = {},
-  ): Promise<PaginatedCommentsResponse> {
+    params: FacebookCommentsQueryParams = {},
+  ): Promise<PaginatedResponse<FacebookComment>> {
     try {
       const path = getPostCommentsPath(
         facebookPageId,
@@ -206,7 +171,7 @@ export const postCommentsAnalyticsService = {
         query ? `${path}?${query}` : path,
       )
 
-      return normalizePaginatedCommentsResponse(response.data)
+      return response.data;
     } catch (error) {
       throw new Error(getErrorMessage(error))
     }

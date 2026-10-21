@@ -1,4 +1,4 @@
-import { LanguageCode } from "./common";
+import { CommentAnalysisStatus, CommentDatePreset, LanguageCode } from "./common";
 
 export type SentimentLabel = "positive" | "neutral" | "negative";
 
@@ -12,18 +12,7 @@ export type CommentSortOption =
   | "positive"
   | "negative";
 
-export type CommentDatePreset =
-  | "all"
-  | "today"
-  | "last_7_days"
-  | "last_30_days"
-  | "custom";
 
-export type CommentAnalysisStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "failed";
 
 export interface FacebookCommentAuthor {
   id?: string | null;
@@ -247,16 +236,16 @@ export type DateRange = "7d" | "30d" | "90d" | "all" | "custom"
 export type SortMode = "newest" | "oldest" | "most_liked"
 
 export interface UiComment {
-  id: string
-  author: string
-  message: string
-  publishedAt: string | null
-  sentiment: Sentiment | null
-  sentimentConfidence: number | null
-  language: LanguageCode | null
-  likes: number
-  permalinkUrl: string | null
-  analyzedAt: string | null
+  id: string;
+  author: string;
+  message: string;
+  publishedAt: string | null;
+  sentiment: Sentiment | null;
+  sentimentConfidence: number | null;
+  language: SupportedLanguage | null;
+  likes: number;
+  permalinkUrl: string | null;
+  analyzedAt: string | null;
 }
 
 export interface PostTopic {

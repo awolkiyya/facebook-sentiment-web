@@ -22,7 +22,7 @@ export function CommentMeta({
   language,
   confidence,
 }: CommentMetaProps) {
-  const languageLabel = languageLabelOf(language)
+  const languageLabel = languageLabelOf("am")
 
   return (
     <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">

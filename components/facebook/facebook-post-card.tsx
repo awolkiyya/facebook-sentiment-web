@@ -116,18 +116,18 @@ function toUiComment(
   comment: FacebookPost["top_comments"][number],
 ): UiComment {
   return {
-    id: comment.id,
-    author: comment.author.name ?? "Unknown user",
-    message: comment.message ?? "",
-    publishedAt: comment.commented_at,
-    sentiment: comment.ai_analysis?.sentiment.label ?? null,
-    sentimentConfidence:
-      comment.ai_analysis?.sentiment.confidence ?? null,
-    language: comment.ai_analysis?.language ?? null,
-    likes: comment.engagement.likes,
-    permalinkUrl: comment.permalink_url,
-    analyzedAt: comment.ai_analysis?.analyzed_at ?? null,
-  }
+  id: comment.id,
+  author: comment.author.name ?? "Unknown user",
+  message: comment.message ?? "",
+  publishedAt: comment.commented_at,
+  sentiment: comment.ai_analysis?.sentiment.label ?? null,
+  sentimentConfidence: comment.ai_analysis?.sentiment.confidence ?? null,
+  // language: comment.ai_analysis?.language ?? null,
+  likes: comment.engagement.like_count,
+  permalinkUrl: comment.permalink_url,
+  analyzedAt: comment.ai_analysis?.analyzed_at ?? null,
+  language: null,
+}
 }
 
 /*

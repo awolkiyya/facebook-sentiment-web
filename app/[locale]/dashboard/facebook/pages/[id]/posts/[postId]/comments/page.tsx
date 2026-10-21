@@ -61,11 +61,14 @@ import {
 
 
 import type { FacebookPost } from "@/types/facebook/post"
-import type { LanguageCode, SentimentLabel } from "@/types/facebook/common"
+import type { CommentAnalysisStatus, CommentSortMode, LanguageCode, SentimentLabel } from "@/types/facebook/common"
 
 import { SentimentTimeline } from "@/components/facebook/sentiment-timeline"
 import { FacebookPostSummary } from "@/components/facebook/FacebookPostSummary"
 import {
+  AnalysisStatusFilter,
+  AnalysisStatusOption,
+  CommentsSection,
   LanguageFilter,
 } from "@/components/facebook/comments-section"
 import { toast } from "sonner"
@@ -466,6 +469,12 @@ function SentimentBadge({
     </span>
   )
 }
+
+
+const analysisStatusOptions: AnalysisStatusOption[] = [
+  { value: "pending", label: "Pending" },
+  { value: "completed", label: "Completed" },
+]
 
 /* -------------------------------------------------------------------------- */
 /* Gauge                                                                      */
@@ -962,18 +971,6 @@ function PostComments() {
   const { data:post,isPending } = useFacebookPost(facebookPageId,facebookPostId);
 
 
-  console.log(post);
-
-  /* ------------------------------------------------------------------------ */
-  /* Data hooks                                                               */
-  /* ------------------------------------------------------------------------ */
-
-  const commentsQuery = useFacebookPostComments(facebookPageId,facebookPostId, {
-    page: 1,
-    perPage: 100,
-    sortBy: "newest",
-  })
-
   // Server-side analytics: available for when you move aggregation off the client.
    
 
@@ -982,18 +979,96 @@ function PostComments() {
 
   const isSyncingComments = syncMutation.isPending
 
-  /* ------------------------------------------------------------------------ */
+ /* ------------------------------------------------------------------------ */
   /* Local UI state                                                           */
   /* ------------------------------------------------------------------------ */
 
   const [search, setSearch] = useState("")
-  const [sentimentFilter, setSentimentFilter] = useState<SentimentFilter>("all")
-  const [languageFilter, setLanguageFilter] = useState<LanguageFilter>("all")
-  const [sortMode] = useState<SortMode>("newest")
+  const [sentimentFilter, setSentimentFilter] =
+    useState<SentimentFilter>("all")
+  const [languageFilter, setLanguageFilter] =
+    useState<LanguageFilter>("all")
+  const [sortMode, setSortMode] = useState<CommentSortMode>("newest")
+  const [analysisStatusFilter, setAnalysisStatusFilter] =
+  useState<CommentAnalysisStatus | "all">("all")
+
   const [dateRange, setDateRange] = useState<DateRange>("30d")
   const [customFrom, setCustomFrom] = useState("")
   const [customTo, setCustomTo] = useState("")
+
   const [showBackToTop, setShowBackToTop] = useState(false)
+
+  const { startDate, endDate } = useMemo(() => {
+    const today = new Date()
+    const toDateString = (date: Date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, "0")
+      const day = String(date.getDate()).padStart(2, "0")
+  
+      return `${year}-${month}-${day}`
+    }
+  
+    if (dateRange === "all") {
+      return { startDate: undefined, endDate: undefined }
+    }
+  
+    if (dateRange === "custom") {
+      return {
+        startDate: customFrom || undefined,
+        endDate: customTo || undefined,
+      }
+    }
+  
+    const daysByRange: Record<string, number> = {
+      "7d": 7,
+      "30d": 30,
+      "90d": 90,
+    }
+  
+    const days = daysByRange[dateRange]
+  
+    if (!days) {
+      return { startDate: undefined, endDate: undefined }
+    }
+  
+    const from = new Date(today)
+    from.setDate(from.getDate() - (days - 1))
+  
+    return {
+      startDate: toDateString(from),
+      endDate: toDateString(today),
+    }
+  }, [dateRange, customFrom, customTo])
+
+  const isDateRangeValid =
+  !startDate || !endDate || startDate <= endDate
+
+  const commentsQuery = useFacebookPostComments(
+    facebookPageId,
+    facebookPostId,
+    {
+      page: 1,
+      perPage: 100,
+      sortBy: sortMode,
+      ...(search.trim() && { search: search.trim() }),
+      ...(sentimentFilter !== "all" && {
+        sentiment: sentimentFilter,
+      }),
+      ...(languageFilter !== "all" &&
+        languageFilter !== "mixed" && {
+          language: languageFilter,
+        }),
+      ...(analysisStatusFilter !== "all" && {
+        analysisStatus: analysisStatusFilter,
+      }),
+      ...(startDate && { startDate }),
+      ...(endDate && { endDate }),
+    },
+    isDateRangeValid,
+  )
+
+
+
 
   /* ------------------------------------------------------------------------ */
   /* Back to top                                                              */
@@ -1770,30 +1845,35 @@ function PostComments() {
             )}
           </section>
 
+         
           {/* Comments */}
-          {/* <CommentsSection
-            comments={commentsForSection}
-            filteredComments={filteredCommentsForSection}
+          <CommentsSection
+            comments={commentsQuery.data?.data ?? []}
+            totalComments={commentsQuery.data?.meta.pagination?.total ?? 0}
             search={search}
             sentimentFilter={sentimentFilter}
             languageFilter={languageFilter}
+            analysisStatusFilter={analysisStatusFilter}
             sortMode={sortMode}
-            dateLabel={dateLabel}
-            isCommentsLoading={isCommentsLoading}
+            analysisStatusOptions={analysisStatusOptions}
+            isCommentsLoading={commentsQuery.isPending}
             onSearchChange={setSearch}
             onSentimentChange={setSentimentFilter}
             onLanguageChange={setLanguageFilter}
+            onAnalysisStatusChange={setAnalysisStatusFilter}
             onSortChange={setSortMode}
             onClearFilters={() => {
               setSearch("")
               setSentimentFilter("all")
               setLanguageFilter("all")
+              setAnalysisStatusFilter("all")
               setSortMode("newest")
+              setDateRange("all")
+              setCustomFrom("")
+              setCustomTo("")
             }}
-            formatDate={formatDate}
-            formatNumber={formatNumber}
-            formatSentiment={formatSentiment}
-          /> */}
+          />
+
 
           <div className="h-10" />
         </div>

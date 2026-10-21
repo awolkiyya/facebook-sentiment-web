@@ -12,6 +12,7 @@ import { postCommentsAnalyticsService } from "@/services/facebook/post-comments-
 import type {
   CommentsQueryParams,
 } from "@/types/facebook/post-comments-analytics"
+import { FacebookCommentsQueryParams } from "@/types/facebook/comment"
 
 /* -------------------------------------------------------------------------- */
 /* Query Keys                                                                 */
@@ -29,7 +30,7 @@ export const facebookCommentKeys = {
   comments: (
     facebookPageId: string,
     postId: string,
-    params: CommentsQueryParams,
+    params: FacebookCommentsQueryParams,
   ) =>
     [
       ...facebookCommentKeys.post(facebookPageId, postId),
@@ -63,27 +64,37 @@ export const facebookCommentKeys = {
 export function useFacebookPostComments(
   facebookPageId: string,
   postId: string,
-  params: CommentsQueryParams = {},
+  params: FacebookCommentsQueryParams = {},
   enabled = true,
 ) {
+  const normalizedPageId = facebookPageId.trim()
+  const normalizedPostId = postId.trim()
+
+  const normalizedParams: FacebookCommentsQueryParams = {
+    ...params,
+    search: params.search?.trim() || undefined,
+    startDate: params.startDate || undefined,
+    endDate: params.endDate || undefined,
+  }
+
   return useQuery({
     queryKey: facebookCommentKeys.comments(
-      facebookPageId,
-      postId,
-      params,
+      normalizedPageId,
+      normalizedPostId,
+      normalizedParams,
     ),
 
     queryFn: () =>
       postCommentsAnalyticsService.getComments(
-        facebookPageId,
-        postId,
-        params,
+        normalizedPageId,
+        normalizedPostId,
+        normalizedParams,
       ),
 
     enabled:
-      Boolean(facebookPageId.trim()) &&
-      Boolean(postId.trim()) &&
-      enabled,
+      enabled &&
+      normalizedPageId.length > 0 &&
+      normalizedPostId.length > 0,
 
     placeholderData: (previousData) => previousData,
 
