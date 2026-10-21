@@ -1070,6 +1070,49 @@ function PostComments() {
   )
 
 
+  const {
+    data: insightsResponse,
+    isPending: isInsightsPending,
+    isError: isInsightsError,
+    refetch: refetchInsights,
+  } = useFacebookPostCommentInsights(
+    facebookPageId,
+    facebookPostId,
+    {
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    },
+    Boolean(facebookPageId && facebookPostId),
+  )
+  
+  const mapInsightComment = (
+    comment: NonNullable<
+      typeof insightsResponse
+    >["data"]["top_positive"],
+  ) => {
+    if (!comment) return null
+  
+    return {
+      id: comment.id,
+      author: comment.author,
+      message: comment.message,
+      language: comment.language,
+      sentimentConfidence: comment.sentiment_confidence,
+      likes: comment.likes,
+      permalinkUrl: comment.permalink_url,
+      commentedAt: comment.commented_at,
+    }
+  }
+  
+  const topPositive = mapInsightComment(
+    insightsResponse?.data.top_positive ?? null,
+  )
+  
+  const topNegative = mapInsightComment(
+    insightsResponse?.data.top_negative ?? null,
+  )
+
+
 
 
   /* ------------------------------------------------------------------------ */
@@ -1336,25 +1379,6 @@ function PostComments() {
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [analyzedComments])
 
-  /* ------------------------------------------------------------------------ */
-  /* Highlights                                                               */
-  /* ------------------------------------------------------------------------ */
-
-  const topPositive = useMemo(
-    () =>
-      [...analyzedComments]
-        .filter((c) => c.sentiment === "positive")
-        .sort((a, b) => b.likes - a.likes)[0] ?? null,
-    [analyzedComments],
-  )
-
-  const topNegative = useMemo(
-    () =>
-      [...analyzedComments]
-        .filter((c) => c.sentiment === "negative")
-        .sort((a, b) => b.likes - a.likes)[0] ?? null,
-    [analyzedComments],
-  )
 
   
 
@@ -1745,106 +1769,169 @@ function PostComments() {
             {/* <SentimentTimeline data={timeline} /> */}
 
             {/* What people are saying */}
-            {(topPositive || topNegative) && (
-              <div className="mt-4">
-                <div className="mb-3">
-                  <h3 className="text-sm font-semibold">
-                    What people are saying
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Highly engaged comments from this analysis period.
-                  </p>
+<div className="mt-4">
+  <div className="mb-3 flex items-start justify-between gap-3">
+    <div>
+      <h3 className="text-sm font-semibold">
+        What people are saying
+      </h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Highly engaged comments from this analysis period.
+      </p>
+    </div>
+
+    {isInsightsError && (
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 text-xs"
+        onClick={() => void refetchInsights()}
+      >
+        Retry
+      </Button>
+    )}
+  </div>
+
+  {isInsightsPending ? (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {[0, 1].map((item) => (
+        <Card key={item} className="border-border/70 shadow-none">
+          <CardContent className="space-y-4 p-4">
+            <Skeleton className="h-4 w-48" />
+            <div className="flex gap-3">
+              <Skeleton className="h-8 w-8 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-3/4" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  ) : isInsightsError ? (
+    <div className="rounded-lg border border-destructive/20 p-4">
+      <p className="text-sm font-medium">
+        Unable to load comment insights
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        The comment insights could not be retrieved. Please try again.
+      </p>
+    </div>
+  ) : !topPositive && !topNegative ? (
+    <div className="rounded-lg border border-dashed p-6 text-center">
+      <MessageCircle className="mx-auto h-5 w-5 text-muted-foreground" />
+      <p className="mt-2 text-sm font-medium">
+        No highlighted comments yet
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        No qualifying positive or negative comments were found for this period.
+      </p>
+    </div>
+  ) : (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {[
+        {
+          comment: topPositive,
+          sentiment: "positive" as Sentiment,
+          title: "Most liked positive comment",
+        },
+        {
+          comment: topNegative,
+          sentiment: "negative" as Sentiment,
+          title: "Most liked negative comment",
+        },
+      ].map(({ comment, sentiment, title }) => {
+        if (!comment) return null
+
+        const confidence = comment.sentimentConfidence
+        const confidencePercent =
+          confidence === null
+            ? null
+            : Math.round(
+                confidence >= 0 && confidence <= 1
+                  ? confidence * 100
+                  : confidence,
+              )
+
+        return (
+          <Card
+            key={sentiment}
+            className="border-border/70 shadow-none"
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${sentimentConfig[sentiment].soft}`}
+                  >
+                    <Flame
+                      className={`h-3.5 w-3.5 ${sentimentConfig[sentiment].text}`}
+                    />
+                  </span>
+
+                  <p className="text-xs font-medium">{title}</p>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {[
-                    {
-                      comment: topPositive,
-                      sentiment: "positive" as Sentiment,
-                      title: "Most liked positive comment",
-                    },
-                    {
-                      comment: topNegative,
-                      sentiment: "negative" as Sentiment,
-                      title: "Most liked negative comment",
-                    },
-                  ].map(
-                    ({ comment, sentiment, title }) =>
-                      comment && (
-                        <Card
-                          key={sentiment}
-                          className="border-border/70 shadow-none"
-                        >
-                          {/* <CardContent className="p-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`flex h-7 w-7 items-center justify-center rounded-lg ${sentimentConfig[sentiment].soft}`}
-                                >
-                                  <Flame
-                                    className={`h-3.5 w-3.5 ${sentimentConfig[sentiment].text}`}
-                                  />
-                                </span>
-                                <p className="text-xs font-medium">{title}</p>
-                              </div>
+                <SentimentBadge sentiment={sentiment} />
+              </div>
 
-                              <SentimentBadge sentiment={sentiment} />
-                            </div>
+              <div className="mt-4 flex gap-3">
+                <AuthorAvatar
+                  name={comment.author}
+                  className="h-8 w-8"
+                />
 
-                            <div className="mt-4 flex gap-3">
-                              <AuthorAvatar
-                                name={comment.author}
-                                className="h-8 w-8"
-                              />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold">
+                    {comment.author}
+                  </p>
 
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-semibold">
-                                  {comment.author}
-                                </p>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+                    {comment.language && (
+                      <span className="flex items-center gap-1">
+                        <Languages className="h-2.5 w-2.5" />
+                        {languageLabelOf(comment.language)}
+                      </span>
+                    )}
 
-                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-                                  {comment.language && (
-                                    <span className="flex items-center gap-1">
-                                      <Languages className="h-2.5 w-2.5" />
-                                      {languageLabelOf(comment.language)}
-                                    </span>
-                                  )}
+                    {confidencePercent !== null && (
+                      <span>
+                        {confidencePercent}% confidence
+                      </span>
+                    )}
+                  </div>
 
-                                  {comment.sentimentConfidence !== null && (
-                                    <span>
-                                      {comment.sentimentConfidence}% confidence
-                                    </span>
-                                  )}
-                                </div>
+                  <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap break-words text-sm leading-5 text-foreground/90">
+                    {comment.message || "No comment text available."}
+                  </p>
 
-                                <p className="mt-1.5 line-clamp-3 text-sm leading-5 text-foreground/90">
-                                  {comment.message}
-                                </p>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Heart className="h-3 w-3" />
+                      {formatNumber(comment.likes)}
+                    </span>
 
-                                <div className="mt-3 flex items-center justify-between">
-                                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                                    <Heart className="h-3 w-3" />
-                                    {formatNumber(comment.likes)}
-                                  </span>
-
-                                  <Button
-                                    variant="link"
-                                    size="sm"
-                                    className="h-auto p-0 text-[11px]"
-                                    onClick={() => jumpToComment(comment.id)}
-                                  >
-                                    View comment
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent> */}
-                        </Card>
-                      ),
-                  )}
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-[11px]"
+                      onClick={() => jumpToComment(comment.id)}
+                    >
+                      View comment
+                    </Button>
+                  </div>
                 </div>
               </div>
-            )}
+            </CardContent>
+          </Card>
+        )
+      })}
+    </div>
+  )}
+</div>
+
           </section>
 
          

@@ -1,4 +1,3 @@
-
 "use client"
 
 import {
@@ -7,12 +6,17 @@ import {
   useQueryClient,
 } from "@tanstack/react-query"
 
+import { facebookCommentService } from "@/services/facebook/comment"
 import { postCommentsAnalyticsService } from "@/services/facebook/post-comments-analytics"
 
 import type {
   CommentsQueryParams,
 } from "@/types/facebook/post-comments-analytics"
-import { FacebookCommentsQueryParams } from "@/types/facebook/comment"
+
+import type {
+  FacebookCommentsQueryParams,
+  FacebookPostCommentInsightsParams,
+} from "@/types/facebook/comment"
 
 /* -------------------------------------------------------------------------- */
 /* Query Keys                                                                 */
@@ -48,6 +52,17 @@ export const facebookCommentKeys = {
     [
       ...facebookCommentKeys.post(facebookPageId, postId),
       "topics",
+    ] as const,
+
+  insights: (
+    facebookPageId: string,
+    postId: string,
+    params: FacebookPostCommentInsightsParams = {},
+  ) =>
+    [
+      ...facebookCommentKeys.post(facebookPageId, postId),
+      "insights",
+      params,
     ] as const,
 
   sync: (facebookPageId: string, postId: string) =>
@@ -111,22 +126,25 @@ export function useFacebookPostCommentsAnalytics(
   postId: string,
   enabled = true,
 ) {
+  const normalizedPageId = facebookPageId.trim()
+  const normalizedPostId = postId.trim()
+
   return useQuery({
     queryKey: facebookCommentKeys.analytics(
-      facebookPageId,
-      postId,
+      normalizedPageId,
+      normalizedPostId,
     ),
 
     queryFn: () =>
       postCommentsAnalyticsService.getAnalytics(
-        facebookPageId,
-        postId,
+        normalizedPageId,
+        normalizedPostId,
       ),
 
     enabled:
-      Boolean(facebookPageId.trim()) &&
-      Boolean(postId.trim()) &&
-      enabled,
+      enabled &&
+      normalizedPageId.length > 0 &&
+      normalizedPostId.length > 0,
 
     staleTime: 60_000,
   })
@@ -141,22 +159,73 @@ export function useFacebookCommentTopics(
   postId: string,
   enabled = true,
 ) {
+  const normalizedPageId = facebookPageId.trim()
+  const normalizedPostId = postId.trim()
+
   return useQuery({
     queryKey: facebookCommentKeys.topics(
-      facebookPageId,
-      postId,
+      normalizedPageId,
+      normalizedPostId,
     ),
 
     queryFn: () =>
       postCommentsAnalyticsService.getTopics(
-        facebookPageId,
-        postId,
+        normalizedPageId,
+        normalizedPostId,
       ),
 
     enabled:
-      Boolean(facebookPageId.trim()) &&
-      Boolean(postId.trim()) &&
-      enabled,
+      enabled &&
+      normalizedPageId.length > 0 &&
+      normalizedPostId.length > 0,
+
+    staleTime: 60_000,
+  })
+}
+
+/* -------------------------------------------------------------------------- */
+/* Fetch Post Comment Insights                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Retrieves the most-liked positive and negative top-level comments
+ * for one Facebook post.
+ *
+ * The Laravel API reads persisted sentiment analysis.
+ * This query does not synchronize comments or trigger AI analysis.
+ */
+export function useFacebookPostCommentInsights(
+  facebookPageId: string,
+  postId: string,
+  params: FacebookPostCommentInsightsParams = {},
+  enabled = true,
+) {
+  const normalizedPageId = facebookPageId.trim()
+  const normalizedPostId = postId.trim()
+
+  const normalizedParams: FacebookPostCommentInsightsParams = {
+    startDate: params.startDate?.trim() || undefined,
+    endDate: params.endDate?.trim() || undefined,
+  }
+
+  return useQuery({
+    queryKey: facebookCommentKeys.insights(
+      normalizedPageId,
+      normalizedPostId,
+      normalizedParams,
+    ),
+
+    queryFn: () =>
+      facebookCommentService.getCommentInsights(
+        normalizedPageId,
+        normalizedPostId,
+        normalizedParams,
+      ),
+
+    enabled:
+      enabled &&
+      normalizedPageId.length > 0 &&
+      normalizedPostId.length > 0,
 
     staleTime: 60_000,
   })
@@ -172,28 +241,31 @@ export function useSyncFacebookComments(
 ) {
   const queryClient = useQueryClient()
 
+  const normalizedPageId = facebookPageId.trim()
+  const normalizedPostId = postId.trim()
+
   return useMutation({
     mutationKey: facebookCommentKeys.sync(
-      facebookPageId,
-      postId,
+      normalizedPageId,
+      normalizedPostId,
     ),
 
     mutationFn: () => {
-      if (!facebookPageId.trim()) {
+      if (!normalizedPageId) {
         throw new Error(
           "A valid Facebook Page ID is required to synchronize comments.",
         )
       }
 
-      if (!postId.trim()) {
+      if (!normalizedPostId) {
         throw new Error(
           "A valid Facebook post ID is required to synchronize comments.",
         )
       }
 
       return postCommentsAnalyticsService.syncComments(
-        facebookPageId,
-        postId,
+        normalizedPageId,
+        normalizedPostId,
       )
     },
 
@@ -201,8 +273,8 @@ export function useSyncFacebookComments(
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: facebookCommentKeys.post(
-            facebookPageId,
-            postId,
+            normalizedPageId,
+            normalizedPostId,
           ),
         }),
       ])

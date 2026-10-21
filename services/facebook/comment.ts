@@ -1,4 +1,3 @@
-
 /**
  * FACEBOOK COMMENT SERVICE
  */
@@ -9,6 +8,7 @@ import type {
   FacebookCommentsQueryParams,
   FacebookCommentsResponse,
   FacebookCommentsSyncResponse,
+  FacebookPostCommentInsightsResponse,
 } from "@/types/facebook/comment"
 
 /* -------------------------------------------------------------------------- */
@@ -24,7 +24,7 @@ const DEFAULT_QUERY_PARAMS: Required<FacebookCommentsQueryParams> = {
   language: "am",
   analysisStatus: "pending",
   startDate: "",
-  endDate: ""
+  endDate: "",
 }
 
 /* -------------------------------------------------------------------------- */
@@ -41,8 +41,7 @@ export const facebookCommentService = {
    * facebookPostId:
    *   Internal Laravel FacebookPost UUID.
    *
-   * Expected endpoint:
-   *   GET /v1/facebook/pages/{facebookPageId}/posts/{facebookPostId}/comments
+   * GET /v1/facebook/pages/{facebookPageId}/posts/{facebookPostId}/comments
    */
   getComments: async (
     facebookPageId: string,
@@ -66,10 +65,46 @@ export const facebookCommentService = {
   },
 
   /**
+   * Retrieve the most-liked positive and negative top-level comments
+   * for a specific Facebook post.
+   *
+   * Reads persisted sentiment analysis from the Laravel API.
+   * Does not synchronize comments or trigger AI analysis.
+   *
+   * Optional date filters use YYYY-MM-DD.
+   *
+   * GET /v1/facebook/pages/{facebookPageId}/posts/{facebookPostId}/comments/insights
+   */
+  getCommentInsights: async (
+    facebookPageId: string,
+    facebookPostId: string,
+    params?: FacebookPostCommentInsightsParams,
+  ): Promise<FacebookPostCommentInsightsResponse> => {
+    const pageId = encodeURIComponent(facebookPageId)
+    const postId = encodeURIComponent(facebookPostId)
+
+    const response =
+      await api.get<FacebookPostCommentInsightsResponse>(
+        `/v1/facebook/pages/${pageId}/posts/${postId}/comments/insights`,
+        {
+          params: {
+            ...(params?.startDate
+              ? { start_date: params.startDate }
+              : {}),
+            ...(params?.endDate
+              ? { end_date: params.endDate }
+              : {}),
+          },
+        },
+      )
+
+    return response.data
+  },
+
+  /**
    * Synchronize comments for a Facebook post from Meta.
    *
-   * Expected endpoint:
-   *   POST /v1/facebook/pages/{facebookPageId}/posts/{facebookPostId}/comments/sync
+   * POST /v1/facebook/pages/{facebookPageId}/posts/{facebookPostId}/comments/sync
    */
   syncComments: async (
     facebookPageId: string,
@@ -84,4 +119,13 @@ export const facebookCommentService = {
 
     return response.data
   },
+}
+
+/* -------------------------------------------------------------------------- */
+/* Comment Insights Types                                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface FacebookPostCommentInsightsParams {
+  startDate?: string
+  endDate?: string
 }
