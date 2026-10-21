@@ -24,6 +24,7 @@ export interface FacebookCommentAIAnalysis {
   };
 
   language: LanguageCode;
+  language_confidence: number | null;
 
   topic: string | null;
   topic_confidence: number | null;

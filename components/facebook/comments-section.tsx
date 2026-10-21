@@ -1,17 +1,26 @@
 "use client"
 
 import {
+  ArrowUpDown,
+  BrainCircuit,
+  Check,
+  ExternalLink,
+  Filter,
   Heart,
   Languages,
   MessageCircle,
   Search,
   SlidersHorizontal,
+  X,
 } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -51,11 +60,8 @@ import {
 /* -------------------------------------------------------------------------- */
 
 export type SentimentFilter = "all" | SentimentLabel
-
 export type LanguageFilter = "all" | LanguageCode
-
 export type AnalysisStatusFilter = "all" | CommentAnalysisStatus
-
 
 export interface AnalysisStatusOption {
   value: CommentAnalysisStatus
@@ -63,31 +69,16 @@ export interface AnalysisStatusOption {
 }
 
 export interface CommentsSectionProps {
-  /** Comments returned by the server for the current query and page. */
   comments: FacebookComment[]
-
-  /** Total matching comments across all pages. */
   totalComments: number
 
-  /** Current controlled search value. */
   search: string
-
-  /** Current sentiment filter. */
   sentimentFilter: SentimentFilter
-
-  /** Current language filter. */
   languageFilter: LanguageFilter
-
-  /** Current AI analysis status filter. */
   analysisStatusFilter: AnalysisStatusFilter
-
-  /** Current server-side sorting mode. */
   sortMode: CommentSortMode
 
-  /** Supported analysis statuses and their display labels. */
   analysisStatusOptions: AnalysisStatusOption[]
-
-  /** Whether the current comments query is loading. */
   isCommentsLoading?: boolean
 
   onSearchChange: (value: string) => void
@@ -95,31 +86,44 @@ export interface CommentsSectionProps {
   onLanguageChange: (value: LanguageFilter) => void
   onAnalysisStatusChange: (value: AnalysisStatusFilter) => void
   onSortChange: (value: CommentSortMode) => void
-
-  /** Reset search, filters, and sorting to their defaults. */
   onClearFilters: () => void
 
   className?: string
 }
 
 /* -------------------------------------------------------------------------- */
-/* Formatting helpers                                                         */
+/* Constants                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const SORT_OPTIONS: {
+  value: CommentSortMode
+  label: string
+}[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "most_liked", label: "Most liked" },
+  { value: "most_replies", label: "Most replies" },
+  {
+    value: "highest_sentiment_confidence",
+    label: "Highest sentiment confidence",
+  },
+  { value: "highest_priority", label: "Highest priority" },
+]
+
+/* -------------------------------------------------------------------------- */
+/* Formatting                                                                 */
 /* -------------------------------------------------------------------------- */
 
 function formatLanguage(language: LanguageCode): string {
   switch (language) {
     case "am":
       return "Amharic"
-
     case "om":
       return "Afaan Oromo"
-
     case "en":
       return "English"
-
     case "mixed":
       return "Mixed language"
-
     default:
       return language
   }
@@ -131,6 +135,10 @@ function formatAnalysisStatus(
   return String(status)
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+function formatConfidence(value: number): string {
+  return `${Math.round(value * 100)}%`
 }
 
 /* -------------------------------------------------------------------------- */
@@ -167,54 +175,57 @@ export function CommentsSection({
   const resetDisabled =
     !hasActiveFilters && !hasNonDefaultSort
 
-    const sortLabel: Record<CommentSortMode, string> = {
-      newest: "Newest first",
-      oldest: "Oldest first",
-      most_liked: "Most liked",
-      most_replies: "Most replies",
-      highest_sentiment_confidence: "Highest sentiment confidence",
-      highest_priority: "Highest priority",
-    }
+  const selectedSort =
+    SORT_OPTIONS.find((option) => option.value === sortMode)
+      ?.label ?? "Newest first"
+
   return (
     <section
       id="comments-section"
-      className={["mt-10 scroll-mt-6", className]
+      className={["mt-8 space-y-4 scroll-mt-6", className]
         .filter(Boolean)
         .join(" ")}
     >
       {/* SECTION HEADER */}
 
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold tracking-tight">
-            Comments
-          </h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight">
+              Comments
+            </h2>
 
-          {!isCommentsLoading && (
-            <Badge
-              variant="secondary"
-              className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-            >
-              {formatNumber(totalComments)}
-            </Badge>
-          )}
+            {!isCommentsLoading && (
+              <Badge
+                variant="secondary"
+                className="rounded-full px-2.5 tabular-nums"
+              >
+                {formatNumber(totalComments)}
+              </Badge>
+            )}
+          </div>
+
+          <p className="text-sm text-muted-foreground">
+            Review public feedback and its AI sentiment analysis.
+          </p>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Search, filter, and explore comments and their sentiment.
-        </p>
+        {!isCommentsLoading && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <BrainCircuit className="size-4" aria-hidden="true" />
+            <span>AI-assisted feedback review</span>
+          </div>
+        )}
       </div>
 
-      {/* SEARCH AND FILTER TOOLBAR */}
+      {/* SEARCH AND CONTROLS */}
 
-      <Card className="mt-4 border-border/70 shadow-none">
-        <CardContent className="p-3 sm:p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            {/* SEARCH — VISIBLE ON THE PAGE */}
-
+      <Card className="gap-0 border-border/70 py-0 shadow-none">
+        <CardContent className="space-y-3 p-3 sm:p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative min-w-0 flex-1">
               <Search
-                className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
                 aria-hidden="true"
               />
 
@@ -223,10 +234,59 @@ export function CommentsSection({
                 onChange={(event) =>
                   onSearchChange(event.target.value)
                 }
-                placeholder="Search comments..."
+                placeholder="Search comment text..."
                 aria-label="Search comments"
-                className="h-10 border-muted bg-muted/30 pl-9"
+                className="h-10 bg-background pl-9 pr-9"
               />
+
+              {search.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 size-8 -translate-y-1/2"
+                  onClick={() => onSearchChange("")}
+                  aria-label="Clear comment search"
+                >
+                  <X className="size-4" />
+                </Button>
+              )}
+            </div>
+
+            {/* SORTING */}
+
+            <div className="flex min-w-0 items-center gap-2 sm:w-auto">
+              <ArrowUpDown
+                className="hidden size-4 shrink-0 text-muted-foreground sm:block"
+                aria-hidden="true"
+              />
+
+              <Select
+                value={sortMode}
+                onValueChange={(value) =>
+                  onSortChange(value as CommentSortMode)
+                }
+              >
+                <SelectTrigger
+                  className="h-10 w-full sm:w-[210px]"
+                  aria-label="Sort comments"
+                >
+                  <SelectValue placeholder="Sort comments">
+                    {selectedSort}
+                  </SelectValue>
+                </SelectTrigger>
+
+                <SelectContent align="end">
+                  {SORT_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                    >
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* FILTER SHEET */}
@@ -237,23 +297,23 @@ export function CommentsSection({
                   type="button"
                   variant="outline"
                   className="h-10 shrink-0 gap-2"
-                  aria-label={
-                    activeFilterCount > 0
-                      ? `Open comment filters, ${activeFilterCount} active`
-                      : "Open comment filters"
-                  }
+                  aria-label={`Open comment filters${
+                    activeFilterCount
+                      ? `, ${activeFilterCount} active`
+                      : ""
+                  }`}
                 >
                   <SlidersHorizontal
                     className="size-4"
                     aria-hidden="true"
                   />
 
-                  Filters
+                  <span>Filters</span>
 
                   {activeFilterCount > 0 && (
                     <Badge
                       variant="secondary"
-                      className="ml-1 h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px]"
+                      className="size-5 justify-center rounded-full p-0 text-[10px]"
                     >
                       {activeFilterCount}
                     </Badge>
@@ -261,43 +321,31 @@ export function CommentsSection({
                 </Button>
               </SheetTrigger>
 
-              {/* FILTER SHEET CONTENT */}
-
               <SheetContent
                 side="right"
                 className="flex w-full flex-col gap-0 sm:max-w-md"
               >
                 <SheetHeader className="border-b px-5 py-5 text-left">
                   <SheetTitle className="flex items-center gap-2">
-                    <SlidersHorizontal
-                      className="size-5"
-                      aria-hidden="true"
-                    />
-
-                    Comment filters
+                    <Filter className="size-5" />
+                    Filter comments
                   </SheetTitle>
 
                   <SheetDescription>
-                    Refine comments by language, sentiment, analysis
-                    status, and sorting. Results update automatically.
+                    Narrow the results by language, sentiment, or AI
+                    analysis status. Changes are applied through the
+                    existing query handlers.
                   </SheetDescription>
                 </SheetHeader>
 
                 <div className="flex-1 space-y-6 overflow-y-auto px-5 py-6">
                   {/* LANGUAGE */}
 
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="comments-language-filter"
-                      className="text-sm font-medium"
-                    >
-                      Language
-                    </label>
-
-                    <p className="text-xs text-muted-foreground">
-                      Show comments written in a specific language.
-                    </p>
-
+                  <FilterField
+                    id="comments-language-filter"
+                    label="Language"
+                    description="Choose the detected language of a comment."
+                  >
                     <Select
                       value={languageFilter}
                       onValueChange={(value) =>
@@ -307,51 +355,39 @@ export function CommentsSection({
                       <SelectTrigger
                         id="comments-language-filter"
                         className="h-10 w-full"
-                        aria-label="Filter by language"
                       >
-                        <SelectValue placeholder="Select language" />
+                        <SelectValue placeholder="All languages" />
                       </SelectTrigger>
 
                       <SelectContent>
                         <SelectItem value="all">
                           All languages
                         </SelectItem>
-
                         <SelectItem value="am">
                           Amharic
                         </SelectItem>
-
                         <SelectItem value="om">
                           Afaan Oromo
                         </SelectItem>
-
                         <SelectItem value="en">
                           English
                         </SelectItem>
-
                         <SelectItem value="mixed">
                           Mixed language
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
+                  </FilterField>
 
                   <div className="border-t" />
 
                   {/* SENTIMENT */}
 
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="comments-sentiment-filter"
-                      className="text-sm font-medium"
-                    >
-                      Sentiment
-                    </label>
-
-                    <p className="text-xs text-muted-foreground">
-                      Filter comments by their AI-detected sentiment.
-                    </p>
-
+                  <FilterField
+                    id="comments-sentiment-filter"
+                    label="Sentiment"
+                    description="Filter by the sentiment predicted by the AI model."
+                  >
                     <Select
                       value={sentimentFilter}
                       onValueChange={(value) =>
@@ -361,47 +397,36 @@ export function CommentsSection({
                       <SelectTrigger
                         id="comments-sentiment-filter"
                         className="h-10 w-full"
-                        aria-label="Filter by sentiment"
                       >
-                        <SelectValue placeholder="Select sentiment" />
+                        <SelectValue placeholder="All sentiments" />
                       </SelectTrigger>
 
                       <SelectContent>
                         <SelectItem value="all">
                           All sentiments
                         </SelectItem>
-
                         <SelectItem value="positive">
                           Positive
                         </SelectItem>
-
                         <SelectItem value="neutral">
                           Neutral
                         </SelectItem>
-
                         <SelectItem value="negative">
                           Negative
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
+                  </FilterField>
 
                   <div className="border-t" />
 
                   {/* ANALYSIS STATUS */}
 
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="comments-analysis-status-filter"
-                      className="text-sm font-medium"
-                    >
-                      Analysis status
-                    </label>
-
-                    <p className="text-xs text-muted-foreground">
-                      Filter comments by their AI analysis status.
-                    </p>
-
+                  <FilterField
+                    id="comments-analysis-status-filter"
+                    label="AI analysis status"
+                    description="Find comments by their analysis processing status."
+                  >
                     <Select
                       value={analysisStatusFilter}
                       onValueChange={(value) =>
@@ -413,9 +438,8 @@ export function CommentsSection({
                       <SelectTrigger
                         id="comments-analysis-status-filter"
                         className="h-10 w-full"
-                        aria-label="Filter by analysis status"
                       >
-                        <SelectValue placeholder="Select analysis status" />
+                        <SelectValue placeholder="All statuses" />
                       </SelectTrigger>
 
                       <SelectContent>
@@ -433,122 +457,64 @@ export function CommentsSection({
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
+                  </FilterField>
 
-                  <div className="border-t" />
+                  {/* ACTIVE FILTERS */}
 
-                  {/* SORTING */}
+                  {hasActiveFilters && (
+                    <>
+                      <div className="border-t" />
 
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="comments-sort-filter"
-                      className="text-sm font-medium"
-                    >
-                      Sort comments
-                    </label>
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">
+                          Active filters
+                        </p>
 
-                    <p className="text-xs text-muted-foreground">
-                      Choose how the server orders the results.
-                    </p>
+                        <div className="flex flex-wrap gap-2">
+                          {search.trim() && (
+                            <Badge variant="secondary">
+                              Search: {search.trim()}
+                            </Badge>
+                          )}
 
-                    <Select
-                      value={sortMode}
-                      onValueChange={(value) =>
-                        onSortChange(value as CommentSortMode)
-                      }
-                    >
-                      <SelectTrigger
-                        id="comments-sort-filter"
-                        className="h-10 w-full"
-                        aria-label="Sort comments"
-                      >
-                        <SelectValue placeholder="Sort comments" />
-                      </SelectTrigger>
+                          {languageFilter !== "all" && (
+                            <Badge variant="secondary">
+                              {formatLanguage(languageFilter)}
+                            </Badge>
+                          )}
 
-                      <SelectContent>
-                        <SelectItem value="newest">
-                          {sortLabel.newest}
-                        </SelectItem>
+                          {sentimentFilter !== "all" && (
+                            <Badge variant="secondary">
+                              {formatSentiment(sentimentFilter)}
+                            </Badge>
+                          )}
 
-                        <SelectItem value="oldest">
-                          {sortLabel.oldest}
-                        </SelectItem>
-
-                        <SelectItem value="most_liked">
-                          {sortLabel.most_liked}
-                        </SelectItem>
-
-                        <SelectItem value="most_replies">
-                          {sortLabel.most_replies}
-                        </SelectItem>
-
-                        <SelectItem value="highest_sentiment_confidence">
-                          {sortLabel.highest_sentiment_confidence}
-                        </SelectItem>
-
-                        <SelectItem value="highest_priority">
-                          {sortLabel.highest_priority}
-                        </SelectItem>
-
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* CURRENT SELECTION SUMMARY */}
-
-                  <div className="rounded-lg border bg-muted/30 p-3">
-                    <p className="text-xs font-medium">
-                      Current selection
-                    </p>
-
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Badge variant="secondary">
-                        {languageFilter === "all"
-                          ? "All languages"
-                          : formatLanguage(languageFilter)}
-                      </Badge>
-
-                      <Badge variant="secondary">
-                        {sentimentFilter === "all"
-                          ? "All sentiments"
-                          : formatSentiment(sentimentFilter)}
-                      </Badge>
-
-                      <Badge variant="secondary">
-                        {analysisStatusFilter === "all"
-                          ? "All analysis statuses"
-                          : formatAnalysisStatus(
-                              analysisStatusFilter,
-                            )}
-                      </Badge>
-
-                      <Badge variant="outline">
-                        {sortLabel[sortMode]}
-                      </Badge>
-
-                      {search.trim() && (
-                        <Badge variant="outline">
-                          Search active
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
+                          {analysisStatusFilter !== "all" && (
+                            <Badge variant="secondary">
+                              {formatAnalysisStatus(
+                                analysisStatusFilter,
+                              )}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
-
-                {/* SHEET ACTIONS */}
 
                 <SheetFooter className="border-t px-5 py-4 sm:flex-row sm:justify-between">
                   <Button
                     type="button"
                     variant="ghost"
-                    onClick={onClearFilters}
                     disabled={resetDisabled}
+                    onClick={onClearFilters}
                   >
-                    Reset filters
+                    Reset all
                   </Button>
 
                   <SheetClose asChild>
                     <Button type="button">
+                      <Check className="mr-2 size-4" />
                       Done
                     </Button>
                   </SheetClose>
@@ -557,78 +523,122 @@ export function CommentsSection({
             </Sheet>
           </div>
 
-          {/* SERVER RESULT SUMMARY */}
+          {/* ACTIVE FILTER CHIPS */}
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3 text-[11px] text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {formatNumber(totalComments)}
-            </span>
+          {hasActiveFilters && (
+            <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+              <span className="mr-1 text-xs text-muted-foreground">
+                Active:
+              </span>
 
-            <span>
-              {totalComments === 1 ? "comment" : "comments"}
-            </span>
-
-            {languageFilter !== "all" && (
-              <>
-                <span aria-hidden="true">•</span>
-
-                <span className="inline-flex items-center gap-1">
-                  <Languages
-                    className="size-3"
-                    aria-hidden="true"
-                  />
-
-                  {formatLanguage(languageFilter)}
-                </span>
-              </>
-            )}
-
-            {sentimentFilter !== "all" && (
-              <>
-                <span aria-hidden="true">•</span>
-
-                <SentimentBadge sentiment={sentimentFilter} />
-              </>
-            )}
-
-            {analysisStatusFilter !== "all" && (
-              <>
-                <span aria-hidden="true">•</span>
-
-                <Badge variant="secondary">
-                  {formatAnalysisStatus(analysisStatusFilter)}
+              {search.trim() && (
+                <Badge variant="secondary" className="gap-1">
+                  <Search className="size-3" />
+                  <span className="max-w-40 truncate">
+                    {search.trim()}
+                  </span>
+                  <button
+                    type="button"
+                    className="ml-1 rounded-full outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onSearchChange("")}
+                    aria-label="Remove search filter"
+                  >
+                    <X className="size-3" />
+                  </button>
                 </Badge>
-              </>
-            )}
+              )}
 
-            {search.trim() && (
-              <>
-                <span aria-hidden="true">•</span>
+              {languageFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1">
+                  <Languages className="size-3" />
+                  {formatLanguage(languageFilter)}
+                  <button
+                    type="button"
+                    className="ml-1 rounded-full outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onLanguageChange("all")}
+                    aria-label="Remove language filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
 
-                <span className="max-w-48 truncate">
-                  Search: {search.trim()}
-                </span>
-              </>
-            )}
+              {sentimentFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1">
+                  {formatSentiment(sentimentFilter)}
+                  <button
+                    type="button"
+                    className="ml-1 rounded-full outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onSentimentChange("all")}
+                    aria-label="Remove sentiment filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
 
-            {hasActiveFilters && (
+              {analysisStatusFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1">
+                  {formatAnalysisStatus(analysisStatusFilter)}
+                  <button
+                    type="button"
+                    className="ml-1 rounded-full outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onAnalysisStatusChange("all")}
+                    aria-label="Remove analysis status filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
+
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="ml-auto h-7 px-2 text-[11px]"
+                className="ml-auto h-7 px-2 text-xs"
                 onClick={onClearFilters}
               >
-                Clear filters
+                Clear all
               </Button>
+            </div>
+          )}
+
+          {/* RESULTS SUMMARY */}
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+            <p
+              className="text-xs text-muted-foreground"
+              aria-live="polite"
+            >
+              {isCommentsLoading ? (
+                "Loading comments..."
+              ) : (
+                <>
+                  <span className="font-medium text-foreground tabular-nums">
+                    {formatNumber(totalComments)}
+                  </span>{" "}
+                  {totalComments === 1
+                    ? "matching comment"
+                    : "matching comments"}
+                </>
+              )}
+            </p>
+
+            {hasNonDefaultSort && (
+              <p className="text-xs text-muted-foreground">
+                Sorted by{" "}
+                <span className="font-medium text-foreground">
+                  {selectedSort.toLowerCase()}
+                </span>
+              </p>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* SERVER-RETURNED COMMENT LIST */}
+      {/* COMMENTS */}
 
-      <Card className="mt-3 overflow-hidden border-border/70 shadow-none">
+      <Card className="gap-0 overflow-hidden border-border/70 py-0 shadow-none">
         <CardContent className="p-0">
           {isCommentsLoading ? (
             <CommentsLoadingState />
@@ -638,18 +648,65 @@ export function CommentsSection({
               onClearFilters={onClearFilters}
             />
           ) : (
-            <div className="divide-y">
-              {comments.map((comment) => (
-                <CommentRow
-                  key={comment.id}
-                  comment={comment}
-                />
-              ))}
-            </div>
+            <>
+              <div className="divide-y">
+                {comments.map((comment) => (
+                  <CommentRow
+                    key={comment.id}
+                    comment={comment}
+                  />
+                ))}
+              </div>
+
+              <div className="border-t bg-muted/20 px-4 py-3">
+                <p className="text-xs text-muted-foreground">
+                  Showing{" "}
+                  <span className="font-medium text-foreground">
+                    {formatNumber(comments.length)}
+                  </span>{" "}
+                  comments on this page.
+                </p>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
     </section>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Filter field                                                               */
+/* -------------------------------------------------------------------------- */
+
+interface FilterFieldProps {
+  id: string
+  label: string
+  description: string
+  children: React.ReactNode
+}
+
+function FilterField({
+  id,
+  label,
+  description,
+  children,
+}: FilterFieldProps) {
+  return (
+    <div className="space-y-2">
+      <label
+        htmlFor={id}
+        className="text-sm font-medium"
+      >
+        {label}
+      </label>
+
+      <p className="text-xs leading-5 text-muted-foreground">
+        {description}
+      </p>
+
+      {children}
+    </div>
   )
 }
 
@@ -671,17 +728,32 @@ function CommentRow({ comment }: CommentRowProps) {
   const analyzedAt = comment.ai_analysis?.analyzed_at
   const likes = comment.engagement?.like_count ?? 0
 
+  const hasSentiment =
+    sentiment === "positive" ||
+    sentiment === "neutral" ||
+    sentiment === "negative"
+
+  const hasAnalysis = Boolean(comment.ai_analysis)
+
+  const validConfidence =
+    typeof confidence === "number" &&
+    Number.isFinite(confidence) &&
+    confidence >= 0 &&
+    confidence <= 1
+
   return (
     <article
       id={`comment-${comment.id}`}
-      className="scroll-mt-24 p-4 transition-colors hover:bg-muted/20 sm:p-5"
+      className="scroll-mt-24 px-4 py-5 transition-colors hover:bg-muted/20 sm:px-5"
     >
-      <div className="flex gap-3">
+      <div className="flex items-start gap-3">
         <AuthorAvatar name={authorName} />
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 space-y-3">
+          {/* AUTHOR AND SENTIMENT */}
+
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
+            <div className="min-w-0 space-y-1">
               <p className="truncate text-sm font-semibold">
                 {authorName}
               </p>
@@ -689,27 +761,65 @@ function CommentRow({ comment }: CommentRowProps) {
               <CommentMeta
                 publishedAt={comment.commented_at}
                 language={language}
-                confidence={confidence}
+                confidence={validConfidence ? confidence : null}
               />
             </div>
 
-            {sentiment && (
-              <SentimentBadge sentiment={sentiment} />
-            )}
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {hasSentiment ? (
+                <SentimentBadge sentiment={sentiment} />
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="font-normal text-muted-foreground"
+                >
+                  {hasAnalysis
+                    ? "No sentiment result"
+                    : "Not analyzed"}
+                </Badge>
+              )}
+            </div>
           </div>
 
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground/90">
-            {comment.message || "No comment text available."}
+          {/* COMMENT TEXT */}
+
+          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/90">
+            {comment.message?.trim() ||
+              "No comment text available."}
           </p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-4">
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Heart className="size-3.5" aria-hidden="true" />
-              {formatNumber(likes)}
+          {/* ENGAGEMENT AND AI METADATA */}
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/60 pt-3">
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Heart
+                className="size-3.5"
+                aria-hidden="true"
+              />
+              <span className="tabular-nums">
+                {formatNumber(likes)}
+              </span>
+              <span>{likes === 1 ? "like" : "likes"}</span>
             </span>
 
+            {validConfidence && (
+              <span
+                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+                title="Confidence of the sentiment prediction"
+              >
+                <BrainCircuit
+                  className="size-3.5"
+                  aria-hidden="true"
+                />
+                Sentiment confidence:{" "}
+                <span className="font-medium text-foreground tabular-nums">
+                  {formatConfidence(confidence)}
+                </span>
+              </span>
+            )}
+
             {analyzedAt && (
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 Analyzed {formatDate(analyzedAt)}
               </span>
             )}
@@ -718,7 +828,7 @@ function CommentRow({ comment }: CommentRowProps) {
               <Button
                 variant="link"
                 size="sm"
-                className="ml-auto h-auto p-0 text-xs"
+                className="ml-auto h-auto gap-1.5 p-0 text-xs"
                 asChild
               >
                 <a
@@ -727,6 +837,10 @@ function CommentRow({ comment }: CommentRowProps) {
                   rel="noopener noreferrer"
                 >
                   View on Facebook
+                  <ExternalLink
+                    className="size-3"
+                    aria-hidden="true"
+                  />
                 </a>
               </Button>
             )}
@@ -751,14 +865,26 @@ function CommentsLoadingState() {
       {Array.from({ length: 5 }, (_, index) => (
         <div
           key={index}
-          className="flex gap-3 p-4 sm:p-5"
+          className="flex gap-3 px-4 py-5 sm:px-5"
         >
           <Skeleton className="size-9 shrink-0 rounded-full" />
 
-          <div className="flex-1 space-y-2.5">
-            <Skeleton className="h-3.5 w-32" />
-            <Skeleton className="h-3 w-full max-w-xl" />
-            <Skeleton className="h-3 w-2/3 max-w-md" />
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-2">
+                <Skeleton className="h-3.5 w-32" />
+                <Skeleton className="h-3 w-44 max-w-full" />
+              </div>
+              <Skeleton className="h-6 w-20 rounded-full" />
+            </div>
+
+            <Skeleton className="h-4 w-full max-w-2xl" />
+            <Skeleton className="h-4 w-4/5 max-w-xl" />
+
+            <div className="flex gap-3 pt-1">
+              <Skeleton className="h-3 w-14" />
+              <Skeleton className="h-3 w-36" />
+            </div>
           </div>
         </div>
       ))}
@@ -780,22 +906,24 @@ function CommentsEmptyState({
   onClearFilters,
 }: CommentsEmptyStateProps) {
   return (
-    <div className="flex min-h-[320px] items-center justify-center p-8">
+    <div className="flex min-h-[280px] items-center justify-center px-6 py-12">
       <div className="max-w-sm text-center">
-        <div className="mx-auto flex size-11 items-center justify-center rounded-xl bg-muted">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-xl border bg-muted/40">
           <MessageCircle
             className="size-5 text-muted-foreground"
             aria-hidden="true"
           />
         </div>
 
-        <p className="mt-4 text-sm font-semibold">
-          No comments found
-        </p>
-
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        <h3 className="mt-4 text-sm font-semibold">
           {hasActiveFilters
-            ? "Try changing your search, language, sentiment, or analysis status filters."
+            ? "No matching comments"
+            : "No comments available"}
+        </h3>
+
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          {hasActiveFilters
+            ? "Try adjusting your search or removing some filters to see more comments."
             : "Comments will appear here when they are available for this post."}
         </p>
 
@@ -807,6 +935,7 @@ function CommentsEmptyState({
             className="mt-4"
             onClick={onClearFilters}
           >
+            <X className="mr-2 size-3.5" />
             Clear filters
           </Button>
         )}
@@ -830,7 +959,7 @@ function AuthorAvatar({ name }: { name: string }) {
 
   return (
     <Avatar className="size-9 shrink-0">
-      <AvatarFallback className="text-[11px] font-medium">
+      <AvatarFallback className="bg-muted text-xs font-semibold text-muted-foreground">
         {initials || "?"}
       </AvatarFallback>
     </Avatar>
@@ -853,32 +982,29 @@ function CommentMeta({
   confidence,
 }: CommentMetaProps) {
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-      {publishedAt ? (
-        <span>{formatDate(publishedAt)}</span>
-      ) : (
-        <span>Unknown date</span>
-      )}
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      <span>
+        {publishedAt ? formatDate(publishedAt) : "Unknown date"}
+      </span>
 
       {language && (
         <>
-          <span className="text-border" aria-hidden="true">
-            •
+          <span aria-hidden="true">·</span>
+          <span className="inline-flex items-center gap-1">
+            <Languages className="size-3" aria-hidden="true" />
+            {formatLanguage(language)}
           </span>
-
-          <span>{formatLanguage(language)}</span>
         </>
       )}
 
       {typeof confidence === "number" &&
-        Number.isFinite(confidence) && (
+        Number.isFinite(confidence) &&
+        confidence >= 0 &&
+        confidence <= 1 && (
           <>
-            <span className="text-border" aria-hidden="true">
-              •
-            </span>
-
+            <span aria-hidden="true">·</span>
             <span>
-              {Math.round(confidence * 100)}% confidence
+              {formatConfidence(confidence)} sentiment confidence
             </span>
           </>
         )}
@@ -899,17 +1025,17 @@ function SentimentBadge({ sentiment }: SentimentBadgeProps) {
     positive: {
       label: "Positive",
       className:
-        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300",
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300",
     },
     neutral: {
       label: "Neutral",
       className:
-        "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300",
+        "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300",
     },
     negative: {
       label: "Negative",
       className:
-        "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300",
+        "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300",
     },
   } satisfies Record<
     SentimentLabel,
@@ -919,7 +1045,10 @@ function SentimentBadge({ sentiment }: SentimentBadgeProps) {
   const { label, className } = config[sentiment]
 
   return (
-    <Badge variant="outline" className={className}>
+    <Badge
+      variant="outline"
+      className={className}
+    >
       {label}
     </Badge>
   )
