@@ -33,10 +33,7 @@ import type {
   FacebookPostAttachment,
 } from "@/types/facebook/post"
 
-
-import { FacebookCommentPreview } from "./facebook-comment-preview"
-import { SentimentLabel } from "@/types/facebook/common"
-import { UiComment } from "@/types/facebook/post-comments-analytics"
+import type { SentimentLabel } from "@/types/facebook/common"
 
 /*
 |--------------------------------------------------------------------------
@@ -106,28 +103,6 @@ function getSentimentClass(
   return sentiment
     ? SENTIMENT_STYLES[sentiment]
     : "border-slate-200 bg-slate-50 text-slate-600"
-}
-
-/**
- * Adapt the backend's API comment model to the existing
- * UI comment model consumed by FacebookCommentPreview.
- */
-function toUiComment(
-  comment: FacebookPost["top_comments"][number],
-): UiComment {
-  return {
-  id: comment.id,
-  author: comment.author.name ?? "Unknown user",
-  message: comment.message ?? "",
-  publishedAt: comment.commented_at,
-  sentiment: comment.ai_analysis?.sentiment.label ?? null,
-  sentimentConfidence: comment.ai_analysis?.sentiment.confidence ?? null,
-  // language: comment.ai_analysis?.language ?? null,
-  likes: comment.engagement.like_count,
-  permalinkUrl: comment.permalink_url,
-  analyzedAt: comment.ai_analysis?.analyzed_at ?? null,
-  language: null,
-}
 }
 
 /*
@@ -528,7 +503,7 @@ function PostAttachments({
 
 export function FacebookPostCard({
   post,
-  isCommentsExpanded,
+  isCommentsExpanded: _isCommentsExpanded,
   onToggleComments,
   onViewComments,
 }: FacebookPostCardProps) {
@@ -550,8 +525,6 @@ export function FacebookPostCard({
   const hasAIAnalysis = hasSentiment || hasTopic
 
   const sentimentStyle = getSentimentClass(sentiment)
-
-  const comments = post.top_comments ?? []
 
   const reactionCount = post.engagement.likes
   const commentCount = post.engagement.comments
@@ -630,10 +603,7 @@ export function FacebookPostCard({
 
                 <DropdownMenuItem onClick={onToggleComments}>
                   <MessageCircle className="mr-2 h-4 w-4" />
-
-                  {isCommentsExpanded
-                    ? "Hide comments"
-                    : "Show comments"}
+                  Show comments
                 </DropdownMenuItem>
 
                 <DropdownMenuItem onClick={onViewComments}>
@@ -774,7 +744,6 @@ export function FacebookPostCard({
               type="button"
               onClick={onToggleComments}
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-              aria-expanded={isCommentsExpanded}
             >
               <MessageCircle className="h-4 w-4" />
 
@@ -802,53 +771,6 @@ export function FacebookPostCard({
             </button>
           </div>
         </div>
-
-        {/* COMMENT PREVIEWS */}
-
-        {isCommentsExpanded && (
-          <div className="border-t bg-muted/10 p-5 sm:p-6">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <h4 className="text-sm font-semibold">
-                  Top Comments
-                </h4>
-
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  AI-analyzed public responses
-                </p>
-              </div>
-
-              {commentCount > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {formatCompactNumber(commentCount)} total
-                </span>
-              )}
-            </div>
-
-            {comments.length > 0 ? (
-              <div className="space-y-2">
-                {comments.map((comment) => (
-                  <FacebookCommentPreview
-                    key={comment.id}
-                    comment={toUiComment(comment)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-dashed bg-background p-6 text-center">
-                <MessageCircle className="mx-auto h-6 w-6 text-muted-foreground" />
-
-                <p className="mt-2 text-sm font-medium">
-                  No comments available
-                </p>
-
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Comments have not been synchronized for this post yet.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
       </CardContent>
     </Card>
   )
