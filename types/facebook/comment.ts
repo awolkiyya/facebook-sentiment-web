@@ -195,7 +195,7 @@ export interface FacebookPostCommentInsight {
    */
   id: string
 
-  author: string
+  author: FacebookCommentAuthor
 
   message: string | null
 

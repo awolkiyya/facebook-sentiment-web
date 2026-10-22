@@ -25,6 +25,7 @@ import {
   useFacebookPostComments,
   useFacebookCommentTopics,
   useSyncFacebookComments,
+  useFacebookPostCommentInsights,
 } from "@/hooks/facebook/use-facebook-comments"
 
 import {
@@ -76,6 +77,9 @@ import { toast } from "sonner"
 import { CommentTopic, FacebookComment } from "@/types/facebook/post-comments-analytics"
 import AiPostInsightPopover from "@/components/facebook/post-comments/ai-post-insight-sheet"
 import { useFacebookPost } from "@/hooks/facebook/use-facebook-posts"
+import { AuthorAvatar } from "@/components/facebook/post-comments/author-avatar"
+import { EthiopianDatePicker } from "@/components/inputs/EthiopianDatePicker"
+import { formatEthiopianDate } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------- */
 /* Mock mode                                                                  */
@@ -111,154 +115,9 @@ interface PostTopic {
   score: number
 }
 
-/* -------------------------------------------------------------------------- */
-/* Mock data                                                                  */
-/* -------------------------------------------------------------------------- */
 
-function daysAgoIso(days: number, hour = 9) {
-  const d = new Date(MOCK_NOW)
-  d.setDate(d.getDate() - days)
-  d.setHours(hour, Math.floor(Math.random() * 60), 0, 0)
-  return d.toISOString()
-}
 
-const MOCK_AUTHORS = [
-  "Abebe Kebede",
-  "Hana Mohammed",
-  "Mekonnen Tadesse",
-  "Fatuma Ali",
-  "Dawit Girma",
-  "Ahmed Nur",
-  "Selamawit Bekele",
-  "Tesfaye Worku",
-  "Aster Alemu",
-  "Kedir Hussein",
-  "Meron Fikadu",
-  "Yonas Abebe",
-  "Rahma Abdisa",
-  "Bereket Solomon",
-  "Nuru Ahmed",
-  "Liya Tesfaye",
-  "Sara Mulu",
-  "Girma Tolla",
-  "Ruth Assefa",
-  "Sami Yusuf",
-]
 
-const POSITIVE_MSGS = [
-  "This is a very good initiative. We appreciate the work being done for the city.",
-  "The improvement is encouraging. Please continue with the same effort.",
-  "Excellent work. The city is changing and we can see the difference.",
-  "Very happy to see this progress. Keep going.",
-  "This is exactly the kind of development our city needs.",
-  "Thank you for listening to the community.",
-]
-
-const NEUTRAL_MSGS = [
-  "When will this project reach the eastern part of the city?",
-  "Can you provide more information about the next phase?",
-  "The information is clear. We will wait for the next update.",
-  "I hope the implementation will continue according to the plan.",
-]
-
-const NEGATIVE_MSGS = [
-  "We need more attention to the roads in our neighborhood.",
-  "Please also improve waste collection around the market area.",
-  "There are still some problems that need to be addressed.",
-  "Please make sure all neighborhoods receive equal attention.",
-]
-
-const POSITIVE_MSGS_AM = [
-  "በጣም ጥሩ ስራ ነው፣ እናመሰግናለን።",
-  "ይህ መሻሻል በጣም ያበረታታል፣ በዚሁ ይቀጥሉ።",
-  "ከተማችን እየተለወጠ ነው፣ ይህን ማየት ያስደስታል።",
-]
-
-const NEUTRAL_MSGS_AM = [
-  "ይህ ፕሮጀክት መቼ ወደ ምስራቅ ከተማ ክፍል ይደርሳል?",
-  "ስለ ቀጣዩ ደረጃ ተጨማሪ መረጃ ማግኘት እንችላለን?",
-]
-
-const NEGATIVE_MSGS_AM = [
-  "በአካባቢያችን ላሉ መንገዶች ተጨማሪ ትኩረት ያስፈልጋል።",
-  "የቆሻሻ አሰባሰብ አገልግሎት መሻሻል አለበት።",
-]
-
-const pickOne = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)]
-
-function pickSentimentConfidence(sentiment: Sentiment) {
-  return sentiment === "neutral"
-    ? 55 + Math.floor(Math.random() * 28)
-    : 76 + Math.floor(Math.random() * 23)
-}
-
-function buildMockComments(): UiComment[] {
-  const out: UiComment[] = []
-  let id = 1
-
-  for (let day = 44; day >= 0; day--) {
-    const recentBoost = day <= 14 ? 1 : 0
-    const count = 1 + Math.floor(Math.random() * (2 + recentBoost * 2))
-
-    for (let i = 0; i < count; i++) {
-      const roll = Math.random()
-      const positiveChance = day <= 14 ? 0.62 : 0.4
-      const negativeChance = day <= 14 ? 0.16 : 0.32
-
-      let sentiment: Sentiment
-      let pool: string[]
-      let poolAm: string[]
-
-      if (roll < positiveChance) {
-        sentiment = "positive"
-        pool = POSITIVE_MSGS
-        poolAm = POSITIVE_MSGS_AM
-      } else if (roll < positiveChance + negativeChance) {
-        sentiment = "negative"
-        pool = NEGATIVE_MSGS
-        poolAm = NEGATIVE_MSGS_AM
-      } else {
-        sentiment = "neutral"
-        pool = NEUTRAL_MSGS
-        poolAm = NEUTRAL_MSGS_AM
-      }
-
-      const language: LanguageCode = Math.random() < 0.3 ? "am" : "en"
-      const iso = daysAgoIso(day)
-
-      out.push({
-        id: String(id++),
-        author: pickOne(MOCK_AUTHORS),
-        message: language === "am" ? pickOne(poolAm) : pickOne(pool),
-        publishedAt: iso,
-        sentiment,
-        sentimentConfidence: pickSentimentConfidence(sentiment),
-        language,
-        likes: Math.floor(Math.random() * 60),
-        permalinkUrl: "https://facebook.com/",
-        analyzedAt: iso,
-      })
-    }
-  }
-
-  return out.reverse()
-}
-
-const MOCK_COMMENTS = buildMockComments()
-
-// const MOCK_POST = {
-//   id: "mock-post",
-//   facebook_post_id: "mock-facebook-post",
-//   message:
-//     "We are pleased to share the latest development update with the community.",
-//   published_at: "2026-09-18T08:00:00",
-//   permalink_url: "https://facebook.com/",
-//   engagement: {
-//     likes: 1250,
-//     comments: MOCK_COMMENTS.length,
-//     shares: 87,
-//   },
-// } as FacebookPost
 
 const MOCK_POST_TOPICS: PostTopic[] = [
   { topic: "Infrastructure & road development", score: 82 },
@@ -420,33 +279,25 @@ const AVATAR_GRADIENTS = [
   "from-sky-500 to-indigo-600",
 ]
 
-function avatarGradient(name: string) {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length]
-}
-
-function AuthorAvatar({
-  name,
-  className = "h-9 w-9",
-}: {
-  name: string
-  className?: string
-}) {
-  return (
-    <Avatar className={`${className} shrink-0 ring-2 ring-background`}>
-      <AvatarFallback
-        className={`bg-gradient-to-br text-[11px] font-semibold text-white ${avatarGradient(
-          name,
-        )}`}
-      >
-        {getInitials(name)}
-      </AvatarFallback>
-    </Avatar>
-  )
-}
+// function AuthorAvatar({
+//   name,
+//   className = "h-9 w-9",
+// }: {
+//   name: string
+//   className?: string
+// }) {
+//   return (
+//     <Avatar className={`${className} shrink-0 ring-2 ring-background`}>
+//       <AvatarFallback
+//         className={`bg-gradient-to-br text-[11px] font-semibold text-white ${avatarGradient(
+//           name,
+//         )}`}
+//       >
+//         {getInitials(name)}
+//       </AvatarFallback>
+//     </Avatar>
+//   )
+// }
 
 /* -------------------------------------------------------------------------- */
 /* Sentiment badge                                                            */
@@ -1070,49 +921,6 @@ function PostComments() {
   )
 
 
-  const {
-    data: insightsResponse,
-    isPending: isInsightsPending,
-    isError: isInsightsError,
-    refetch: refetchInsights,
-  } = useFacebookPostCommentInsights(
-    facebookPageId,
-    facebookPostId,
-    {
-      startDate: startDate || undefined,
-      endDate: endDate || undefined,
-    },
-    Boolean(facebookPageId && facebookPostId),
-  )
-  
-  const mapInsightComment = (
-    comment: NonNullable<
-      typeof insightsResponse
-    >["data"]["top_positive"],
-  ) => {
-    if (!comment) return null
-  
-    return {
-      id: comment.id,
-      author: comment.author,
-      message: comment.message,
-      language: comment.language,
-      sentimentConfidence: comment.sentiment_confidence,
-      likes: comment.likes,
-      permalinkUrl: comment.permalink_url,
-      commentedAt: comment.commented_at,
-    }
-  }
-  
-  const topPositive = mapInsightComment(
-    insightsResponse?.data.top_positive ?? null,
-  )
-  
-  const topNegative = mapInsightComment(
-    insightsResponse?.data.top_negative ?? null,
-  )
-
-
 
 
   /* ------------------------------------------------------------------------ */
@@ -1149,7 +957,7 @@ function PostComments() {
   /* ------------------------------------------------------------------------ */
 
   const uiComments = useMemo<UiComment[]>(() => {
-    if (USE_MOCK_DATA) return MOCK_COMMENTS
+    // if (USE_MOCK_DATA) return MOCK_COMMENTS
 
     return (extractList(commentsQuery.data) as FacebookComment[]).map(
       mapComment,
@@ -1456,7 +1264,7 @@ function PostComments() {
           : dateRange === "90d"
             ? "Past 3 months"
             : customFrom || customTo
-              ? `${customFrom || "..."} – ${customTo || "..."}`
+              ? `${formatEthiopianDate(customFrom) || "..."} – ${formatEthiopianDate(customTo) || "..."}`
               : "Custom range"
 
       const postMessage = post?.data.message ?? "Post content unavailable."
@@ -1543,6 +1351,7 @@ function PostComments() {
               <FacebookPostSummary
                 postDate={post?.data.published_at!}
                 postMessage={postMessage}
+                attachments={post?.data.attachments}   // add this line
                 postLikes={postLikes}
                 totalComments={post?.data.engagement.comments??0}
                 postShares={postShares}
@@ -1569,7 +1378,7 @@ function PostComments() {
 
           {/* Analytics */}
           <section className="mt-9">
-            {/* <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg font-semibold tracking-tight">
@@ -1643,42 +1452,81 @@ function PostComments() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-            </div> */}
+            </div> 
+            
 
             {/* Custom dates */}
-            {/* {dateRange === "custom" && (
+            {dateRange === "custom" && (
               <Card className="mt-4 border-border/70 shadow-none">
                 <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium">
+                  {/* From */}
+                  <div className="min-w-0 space-y-1.5">
+                    <label className="block text-xs font-medium">
                       From
                     </label>
-                    <Input
-                      type="date"
-                      value={customFrom}
-                      onChange={(event) => setCustomFrom(event.target.value)}
+
+                    <EthiopianDatePicker
+                      value={
+                        customFrom
+                          ? new Date(`${customFrom}T00:00:00`)
+                          : undefined
+                      }
+                      onChange={(date) => {
+                        const formattedDate = [
+                          date.getFullYear(),
+                          String(date.getMonth() + 1).padStart(2, "0"),
+                          String(date.getDate()).padStart(2, "0"),
+                        ].join("-");
+
+                        setCustomFrom(formattedDate);
+
+                        // Keep the end date valid when the start date changes.
+                        if (customTo && customTo < formattedDate) {
+                          setCustomTo("");
+                        }
+                      }}
+                      placeholder="Select start date"
+                      maxYear={new Date().getFullYear()}
+                      showTime={true}
                     />
                   </div>
 
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium">
+                  {/* To */}
+                  <div className="min-w-0 space-y-1.5">
+                    <label className="block text-xs font-medium">
                       To
                     </label>
-                    <Input
-                      type="date"
-                      value={customTo}
-                      min={customFrom || undefined}
-                      onChange={(event) => setCustomTo(event.target.value)}
+
+                    <EthiopianDatePicker
+                      value={
+                        customTo
+                          ? new Date(`${customTo}T00:00:00`)
+                          : undefined
+                      }
+                      onChange={(date) => {
+                        const formattedDate = [
+                          date.getFullYear(),
+                          String(date.getMonth() + 1).padStart(2, "0"),
+                          String(date.getDate()).padStart(2, "0"),
+                        ].join("-");
+
+                        setCustomTo(formattedDate);
+                      }}
+                      placeholder="Select end date"
+                      minYear={1900}
+                      maxYear={new Date().getFullYear()}
+                      showTime={true}
+                      timeFormat="12h"
                     />
                   </div>
                 </CardContent>
               </Card>
-            )} */}
+            )}
 
             {/* Analytics grid */}
             <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_240px]">
               {/* Overall */}
-              {/* <Card className="border-border/70 shadow-none">
+              <Card className="border-border/70 shadow-none">
                 <CardHeader className="pb-0">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-sm font-semibold">
@@ -1706,10 +1554,10 @@ function PostComments() {
                     {overallLabel}
                   </div>
                 </CardContent>
-              </Card> */}
+              </Card>
 
               {/* Distribution */}
-              {/* <Card className="border-border/70 shadow-none">
+              <Card className="border-border/70 shadow-none">
                 <CardHeader className="pb-0">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-sm font-semibold">
@@ -1743,10 +1591,10 @@ function PostComments() {
                     </div>
                   )}
                 </CardContent>
-              </Card> */}
+              </Card>
 
               {/* KPI */}
-              {/* <div className="grid grid-cols-2 gap-4 xl:grid-cols-1">
+              <div className="grid grid-cols-2 gap-4 xl:grid-cols-1">
                 <StatCard
                   icon={MessageCircle}
                   label="Comments"
@@ -1762,175 +1610,13 @@ function PostComments() {
                   growthPercent={usersGrowth}
                   accent="bg-violet-500/10 text-violet-600 dark:text-violet-400"
                 />
-              </div> */}
+              </div>
             </div>
 
             {/* Timeline */}
-            {/* <SentimentTimeline data={timeline} /> */}
+            <SentimentTimeline data={timeline} />
 
-            {/* What people are saying */}
-<div className="mt-4">
-  <div className="mb-3 flex items-start justify-between gap-3">
-    <div>
-      <h3 className="text-sm font-semibold">
-        What people are saying
-      </h3>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Highly engaged comments from this analysis period.
-      </p>
-    </div>
 
-    {isInsightsError && (
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs"
-        onClick={() => void refetchInsights()}
-      >
-        Retry
-      </Button>
-    )}
-  </div>
-
-  {isInsightsPending ? (
-    <div className="grid gap-4 lg:grid-cols-2">
-      {[0, 1].map((item) => (
-        <Card key={item} className="border-border/70 shadow-none">
-          <CardContent className="space-y-4 p-4">
-            <Skeleton className="h-4 w-48" />
-            <div className="flex gap-3">
-              <Skeleton className="h-8 w-8 rounded-full" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-3 w-28" />
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-3/4" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  ) : isInsightsError ? (
-    <div className="rounded-lg border border-destructive/20 p-4">
-      <p className="text-sm font-medium">
-        Unable to load comment insights
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        The comment insights could not be retrieved. Please try again.
-      </p>
-    </div>
-  ) : !topPositive && !topNegative ? (
-    <div className="rounded-lg border border-dashed p-6 text-center">
-      <MessageCircle className="mx-auto h-5 w-5 text-muted-foreground" />
-      <p className="mt-2 text-sm font-medium">
-        No highlighted comments yet
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        No qualifying positive or negative comments were found for this period.
-      </p>
-    </div>
-  ) : (
-    <div className="grid gap-4 lg:grid-cols-2">
-      {[
-        {
-          comment: topPositive,
-          sentiment: "positive" as Sentiment,
-          title: "Most liked positive comment",
-        },
-        {
-          comment: topNegative,
-          sentiment: "negative" as Sentiment,
-          title: "Most liked negative comment",
-        },
-      ].map(({ comment, sentiment, title }) => {
-        if (!comment) return null
-
-        const confidence = comment.sentimentConfidence
-        const confidencePercent =
-          confidence === null
-            ? null
-            : Math.round(
-                confidence >= 0 && confidence <= 1
-                  ? confidence * 100
-                  : confidence,
-              )
-
-        return (
-          <Card
-            key={sentiment}
-            className="border-border/70 shadow-none"
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${sentimentConfig[sentiment].soft}`}
-                  >
-                    <Flame
-                      className={`h-3.5 w-3.5 ${sentimentConfig[sentiment].text}`}
-                    />
-                  </span>
-
-                  <p className="text-xs font-medium">{title}</p>
-                </div>
-
-                <SentimentBadge sentiment={sentiment} />
-              </div>
-
-              <div className="mt-4 flex gap-3">
-                <AuthorAvatar
-                  name={comment.author}
-                  className="h-8 w-8"
-                />
-
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold">
-                    {comment.author}
-                  </p>
-
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-                    {comment.language && (
-                      <span className="flex items-center gap-1">
-                        <Languages className="h-2.5 w-2.5" />
-                        {languageLabelOf(comment.language)}
-                      </span>
-                    )}
-
-                    {confidencePercent !== null && (
-                      <span>
-                        {confidencePercent}% confidence
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap break-words text-sm leading-5 text-foreground/90">
-                    {comment.message || "No comment text available."}
-                  </p>
-
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      <Heart className="h-3 w-3" />
-                      {formatNumber(comment.likes)}
-                    </span>
-
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-[11px]"
-                      onClick={() => jumpToComment(comment.id)}
-                    >
-                      View comment
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )
-      })}
-    </div>
-  )}
-</div>
 
           </section>
 
@@ -1953,6 +1639,7 @@ function PostComments() {
               onAnalysisStatusChange={setAnalysisStatusFilter}
               onCommenterChange={setCommenterFilter}
               onSortChange={setSortMode}
+              insightsUrl={`/api/v1/facebook/pages/${facebookPageId}/posts/${facebookPostId}/comments/insights`}
               onClearFilters={() => {
                 setSearch("")
                 setSentimentFilter("all")
