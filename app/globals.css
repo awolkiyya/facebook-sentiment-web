@@ -129,3 +129,27 @@
     @apply font-sans;
   }
 }
+
+
+@keyframes topic-progress-enter {
+  from {
+    width: 0;
+  }
+
+  to {
+    width: var(--topic-progress-width);
+  }
+}
+
+.topic-progress-bar {
+  width: 0;
+  animation: topic-progress-enter 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 100ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topic-progress-bar {
+    animation: none;
+    width: var(--topic-progress-width);
+  }
+}

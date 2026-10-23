@@ -1,7 +1,7 @@
 
 import { api } from "@/lib/api/api"
 import { PaginatedResponse } from "@/types/api"
-import { FacebookComment, FacebookCommentsQueryParams } from "@/types/facebook/comment"
+import { FacebookComment, FacebookPostCommentsParams } from "@/types/facebook/comment"
 
 import type {
   CommentsQueryParams,
@@ -40,7 +40,7 @@ function getPostCommentsPath(
 /* -------------------------------------------------------------------------- */
 
 function buildQueryParams(
-  params: FacebookCommentsQueryParams,
+  params: FacebookPostCommentsParams,
 ): URLSearchParams {
   const query = new URLSearchParams()
 
@@ -94,6 +94,10 @@ function buildQueryParams(
 
   if (params.analysisStatus) {
     query.set("analysis_status", params.analysisStatus)
+  }
+
+  if (params.commenter) {
+    query.set("commenter", params.commenter)
   }
 
   if (params.sortBy) {
@@ -157,7 +161,7 @@ export const postCommentsAnalyticsService = {
   async getComments(
     facebookPageId: string,
     facebookPostId: string,
-    params: FacebookCommentsQueryParams = {},
+    params: FacebookPostCommentsParams = {},
   ): Promise<PaginatedResponse<FacebookComment>> {
     try {
       const path = getPostCommentsPath(

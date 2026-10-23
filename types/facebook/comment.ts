@@ -1,3 +1,4 @@
+import { CommenterFilter } from "@/components/facebook/comments-section"
 import type {
   CommentAnalysisStatus,
   CommentSortMode,
@@ -108,7 +109,7 @@ export interface FacebookComment {
 /* COMMENTS QUERY                                                             */
 /* -------------------------------------------------------------------------- */
 
-export interface FacebookCommentsQueryParams {
+export interface FacebookPostCommentsParams {
   page?: number
   perPage?: number
   sortBy?: CommentSortMode
@@ -116,6 +117,7 @@ export interface FacebookCommentsQueryParams {
   sentiment?: SentimentLabel
   language?: LanguageCode
   analysisStatus?: CommentAnalysisStatus
+  commenter?: CommenterFilter
   startDate?: string
   endDate?: string
 }
@@ -259,4 +261,101 @@ export interface FacebookPostCommentInsightsResponse {
      */
     top_negative: FacebookPostCommentInsight | null
   }
+}
+
+
+
+/* -------------------------------------------------------------------------- */
+/* Facebook Post Sentiment Overview                                           */
+/* -------------------------------------------------------------------------- */
+
+export interface FacebookPostSentimentDistributionItem {
+  count: number
+  percentage: number
+}
+
+export interface FacebookPostOverallSentiment {
+  score: number | null
+  scale: {
+    min: number
+    max: number
+  }
+  label: "Positive" | "Neutral" | "Negative" | "No analysis yet"
+  analyzed_count: number
+}
+
+export interface FacebookPostSentimentDistribution {
+  positive: FacebookPostSentimentDistributionItem
+  neutral: FacebookPostSentimentDistributionItem
+  negative: FacebookPostSentimentDistributionItem
+  total: number
+  has_data: boolean
+}
+
+export interface FacebookPostSentimentTimelineItem {
+  date: string
+  comment_count: number
+  average_sentiment_score: number | null
+}
+
+export interface FacebookPostSentimentTimeline {
+  has_data: boolean
+  data: FacebookPostSentimentTimelineItem[]
+}
+
+export interface FacebookPostSentimentOverview {
+  overall_sentiment: FacebookPostOverallSentiment
+  sentiment_distribution: FacebookPostSentimentDistribution
+  sentiment_timeline: FacebookPostSentimentTimeline
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Facebook Post Sentiment Overview Parameters                                */
+/* -------------------------------------------------------------------------- */
+
+export interface FacebookPostSentimentOverviewParams {
+  startDate?: string
+  endDate?: string
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Top Topics Types                                                           */
+/* -------------------------------------------------------------------------- */
+
+export interface FacebookPostTopTopicsParams {
+  startDate?: string
+  endDate?: string
+  limit?: number
+}
+
+export interface FacebookPostTopTopic {
+  topic: string
+  comment_count: number
+  percentage: number
+}
+
+export interface FacebookPostTopTopics {
+  topics: FacebookPostTopTopic[]
+  analyzed_comment_count: number
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Comment Insights Types                                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface FacebookPostCommentInsightsParams {
+  startDate?: string
+  endDate?: string
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sentiment Overview Types                                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface FacebookPostSentimentOverviewParams {
+  startDate?: string
+  endDate?: string
 }

@@ -13,6 +13,7 @@ import MayorFacebookAnalyticsBanner from "@/components/MayorFacebookAnalyticsBan
 import MfaSecurityBanner from "@/components/MfaSecurityBanner";
 import { useSelector } from "react-redux";
 import { RootState } from "@/lib/store/store";
+import Threads from "@/components/Threads";
 
 
 
@@ -203,3 +204,6 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+
+

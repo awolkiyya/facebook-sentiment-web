@@ -42,7 +42,7 @@
  */
 
 import { api } from "@/lib/api/api";
-import { FacebookCommentsQueryParams, FacebookCommentsResponse, FacebookCommentsSyncResponse } from "@/types/facebook/comment";
+import { FacebookPostCommentsParams, FacebookCommentsResponse, FacebookCommentsSyncResponse } from "@/types/facebook/comment";
 import { FacebookPageDisconnectResponse, FacebookPageResponse, FacebookPagesResponse } from "@/types/facebook/page";
 import { FacebookPostsQueryParams, FacebookPostsResponse, FacebookPostsSyncResponse } from "@/types/facebook/post";
 
@@ -260,7 +260,7 @@ export const facebookService = {
   getComments: async (
     facebookPageId: string,
     facebookPostId: string,
-    params?: FacebookCommentsQueryParams
+    params?: FacebookPostCommentsParams
   ): Promise<FacebookCommentsResponse> => {
     const response =
       await api.get<FacebookCommentsResponse>(

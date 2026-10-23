@@ -9,9 +9,9 @@ import { facebookService } from "@/services/facebook.service"
 import type {
   FacebookComment,
   FacebookCommentsPagination,
-  FacebookCommentsQueryParams,
   FacebookCommentsResponse,
   FacebookCommentsSyncResponse,
+  FacebookPostCommentsParams,
 } from "@/types/facebook/comment"
 
 import type {
@@ -451,7 +451,7 @@ export function useFacebook() {
     async (
       facebookPageId: string,
       facebookPostId: string,
-      params?: FacebookCommentsQueryParams,
+      params?: FacebookPostCommentsParams,
     ) => {
       try {
         setIsLoadingComments(true)
