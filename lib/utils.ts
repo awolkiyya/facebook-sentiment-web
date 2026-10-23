@@ -307,4 +307,3 @@ export const reportTypeToTimeframes: Record<string, string[]> = {
   quarterly: generateEthiopianQuarterlyTimeframes(4),
   yearly: [String(getCurrentEthiopianDate().year)],
 };
-
