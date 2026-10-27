@@ -1,1025 +1,1544 @@
 "use client"
 
-import * as React from "react"
-import Link from "next/link"
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
+  AlertCircle,
   ArrowLeft,
   Check,
-  ChevronDown,
-  KeyRound,
+  ChevronsUpDown,
+  Eye,
+  EyeOff,
+  Loader2,
+  Save,
   ShieldCheck,
-  Users,
 } from "lucide-react"
 
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-
-import type {
-  CreateRoleRequest,
-  UpdateRoleRequest,
-} from "@/types/role"
-import type { Permission } from "@/types/permission"
-
 import {
-  useCreateRole,
-  useRole,
-  useUpdateRole,
-} from "@/hooks/role/role.hooks"
-import { usePermissions } from "@/hooks/permission/use-permissions"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 
+import type { Role } from "@/types/role"
+import { useRoles } from "@/hooks/role/role.hooks"
+
+import type { User } from "@/types/user"
 /*
-|--------------------------------------------------------------------------
-| Types
-|--------------------------------------------------------------------------
-*/
+ * ASSUMPTION: path/name of the user hooks module — adjust the import path
+ * below if your project exposes these hooks somewhere else (e.g.
+ * "@/hooks/user/user.hooks" vs "@/hooks/user.hooks").
+ */
+import {
+  useUser,
+  useCreateUser,
+  useUpdateUser,
+  useUpdateUserStatus,
+  useResetUserPassword,
+  useAssignUserRoles,
+} from "@/hooks/user/user.hooks"
 
-interface PermissionGroup {
-  key: string
-  label: string
-  description?: string
-  permissions: Permission[]
-}
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
 
-interface RoleFormState {
-  key: string
+type UserStatus = "ACTIVE" | "INACTIVE"
+
+type FormField = keyof UserFormData
+
+interface UserFormData {
   name: string
-  selectedPermissions: string[]
+  email: string
+  phone: string
+  role: string
+  status: UserStatus
+  password: string
+  passwordConfirmation: string
 }
 
-/*
-|--------------------------------------------------------------------------
-| Constants
-|--------------------------------------------------------------------------
-*/
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                    */
+/* -------------------------------------------------------------------------- */
 
-const ROLES_URL = "/or/dashboard/administration/roles"
-
-/*
-|--------------------------------------------------------------------------
-| Helpers
-|--------------------------------------------------------------------------
-*/
-
-function formatRoleName(value?: string | null): string {
-  if (
-    typeof value !== "string" ||
-    value.trim().length === 0
-  ) {
-    return "Unnamed Role"
-  }
-
-  return value
+function getInitials(name: string) {
+  const initials = name
     .trim()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (character) =>
-      character.toUpperCase(),
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("")
+
+  return initials || "?"
+}
+
+/**
+ * Convert a technical role name such as:
+ *
+ * SYSTEM_ADMIN
+ * DATA_MANAGER
+ * EXECUTIVE_VIEWER
+ *
+ * into a readable UI label.
+ */
+function formatRoleName(name: string) {
+  return name
+    .toLowerCase()
+    .split("_")
+    .map(
+      (part) =>
+        part.charAt(0).toUpperCase() + part.slice(1),
     )
+    .join(" ")
 }
 
-function normalizeRoleName(value: string): string {
-  return value
-    .trim()
-    .toUpperCase()
-    .replace(/[-\s]+/g, "_")
-    .replace(/[^A-Z0-9_]/g, "")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")
-}
-
-function getRolePermissionNames(
-  rolePermissions:
-    | Array<{
-        id?: string
-        name?: string | null
-      }>
-    | null
-    | undefined,
-): string[] {
-  if (!Array.isArray(rolePermissions)) {
-    return []
+/**
+ * Roles are supplied by the backend. Confirmed response envelope:
+ *
+ * {
+ *   success: boolean
+ *   message: string
+ *   data: Role[]   // id, name, guard_name, type, users_count,
+ *                   // permissions_count, created_at, updated_at
+ *   meta: { timestamp, request_id, version, pagination }
+ * }
+ *
+ * `useRoles` is expected to unwrap the axios response to `response.data.data`
+ * (the Role[] array) rather than exposing the full envelope here. The backend
+ * does not persist a role description/scope, so those are derived for
+ * presentation rather than maintained as a second hardcoded role list.
+ */
+function getRoleDescription(role: Role) {
+  if (role.type === "SYSTEM") {
+    return "System role with protected access configuration."
   }
 
-  return Array.from(
-    new Set(
-      rolePermissions
-        .map((permission) => permission?.name)
-        .filter(
-          (name): name is string =>
-            typeof name === "string" &&
-            name.trim().length > 0,
-        )
-        .map((name) => name.trim()),
-    ),
+  return `${role.permissions_count} permission${
+    role.permissions_count === 1 ? "" : "s"
+  } assigned to this role.`
+}
+
+function getRoleScope(role: Role) {
+  if (role.type === "SYSTEM") {
+    return "System"
+  }
+
+  return `${role.permissions_count} permissions`
+}
+
+function findRole(roles: Role[], value: string) {
+  return roles.find((role) => role.name === value)
+}
+
+/** 0–4. Deliberately simple: it guides, it does not gate. */
+function scorePassword(password: string) {
+  if (!password) return 0
+
+  let score = 0
+
+  if (password.length >= 8) score += 1
+  if (password.length >= 12) score += 1
+  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1
+  if (/\d/.test(password) && /[^A-Za-z0-9]/.test(password)) score += 1
+
+  return Math.min(score, 4)
+}
+
+const STRENGTH_LABELS = [
+  "Too short",
+  "Weak",
+  "Fair",
+  "Good",
+  "Strong",
+]
+
+const STRENGTH_COLORS = [
+  "bg-muted",
+  "bg-destructive",
+  "bg-amber-500",
+  "bg-emerald-500",
+  "bg-emerald-600",
+]
+
+/* -------------------------------------------------------------------------- */
+/* Section                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function FormSection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="grid gap-6 py-8 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] md:gap-10">
+      <div className="md:pt-0.5">
+        <h2 className="text-sm font-semibold tracking-tight">
+          {title}
+        </h2>
+
+        <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+          {description}
+        </p>
+      </div>
+
+      <div className="space-y-5">{children}</div>
+    </section>
   )
 }
 
-function buildPermissionGroups(
-  permissions: Permission[],
-): PermissionGroup[] {
-  const groups = new Map<string, PermissionGroup>()
+/* -------------------------------------------------------------------------- */
+/* Field                                                                      */
+/* -------------------------------------------------------------------------- */
 
-  for (const permission of permissions) {
-    const groupKey =
-      permission.group ||
-      permission.resource ||
-      "other"
+function Field({
+  id,
+  label,
+  required,
+  hint,
+  error,
+  children,
+}: {
+  id: string
+  label: string
+  required?: boolean
+  hint?: string
+  error?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <Label htmlFor={id}>{label}</Label>
 
-    const groupLabel =
-      permission.group_label ||
-      permission.group ||
-      permission.resource ||
-      "Other"
+        {!required && (
+          <span className="text-xs text-muted-foreground">
+            Optional
+          </span>
+        )}
+      </div>
 
-    const existingGroup = groups.get(groupKey)
+      {children}
 
-    if (existingGroup) {
-      existingGroup.permissions.push(permission)
-      continue
-    }
-
-    groups.set(groupKey, {
-      key: groupKey,
-      label: groupLabel,
-      description: permission.group_description,
-      permissions: [permission],
-    })
-  }
-
-  return Array.from(groups.values())
+      {error ? (
+        <p
+          id={`${id}-error`}
+          role="alert"
+          className="flex items-start gap-1.5 text-sm text-destructive"
+        >
+          <AlertCircle
+            aria-hidden="true"
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+          />
+          {error}
+        </p>
+      ) : hint ? (
+        <p
+          id={`${id}-hint`}
+          className="text-xs leading-5 text-muted-foreground"
+        >
+          {hint}
+        </p>
+      ) : null}
+    </div>
+  )
 }
 
-/*
-|--------------------------------------------------------------------------
-| Page
-|--------------------------------------------------------------------------
-*/
+/* -------------------------------------------------------------------------- */
+/* Role picker                                                                */
+/* -------------------------------------------------------------------------- */
 
-function RoleFormPage() {
+function RolePicker({
+  roles,
+  loading,
+  value,
+  onChange,
+  onBlur,
+  error,
+}: {
+  roles: Role[]
+  loading?: boolean
+  value: string
+  onChange: (value: string) => void
+  onBlur?: () => void
+  error?: string
+}) {
+  const [open, setOpen] = useState(false)
+
+  const selected = findRole(roles, value)
+
+  return (
+    <div className="space-y-2">
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+
+          if (!next) onBlur?.()
+        }}
+      >
+        <PopoverTrigger asChild>
+          <Button
+            id="role"
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? "role-error" : undefined}
+            disabled={loading}
+            className={`
+              h-auto w-full justify-between px-3 py-2.5 font-normal
+              ${error ? "border-destructive" : ""}
+            `}
+          >
+            {loading ? (
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading roles...
+              </span>
+            ) : selected ? (
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-sm font-medium">
+                  {formatRoleName(selected.name)}
+                </span>
+
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 font-normal"
+                >
+                  {getRoleScope(selected)}
+                </Badge>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                Choose a role
+              </span>
+            )}
+
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="ml-2 h-4 w-4 shrink-0 opacity-50"
+            />
+          </Button>
+        </PopoverTrigger>
+
+        <PopoverContent
+          align="start"
+          className="w-[--radix-popover-trigger-width] p-0"
+        >
+          <Command
+            filter={(itemValue, search) =>
+              itemValue
+                .toLowerCase()
+                .includes(search.toLowerCase())
+                ? 1
+                : 0
+            }
+          >
+            <CommandInput
+              placeholder="Search roles"
+              className="h-9"
+            />
+
+            <CommandList>
+              <CommandEmpty className="px-4 py-6 text-center text-sm text-muted-foreground">
+                No roles match your search.
+              </CommandEmpty>
+
+              <CommandGroup>
+                {roles.map((role) => {
+                  const label = formatRoleName(role.name)
+                  const description = getRoleDescription(role)
+                  const scope = getRoleScope(role)
+
+                  return (
+                    <CommandItem
+                      key={role.id}
+                      value={`${role.name} ${label} ${scope} ${description}`}
+                      onSelect={() => {
+                        onChange(role.name)
+                        setOpen(false)
+                      }}
+                      className="items-start gap-2 py-2"
+                    >
+                      <Check
+                        aria-hidden="true"
+                        className={`
+                          mt-0.5 h-4 w-4 shrink-0
+                          ${
+                            role.name === value
+                              ? "opacity-100"
+                              : "opacity-0"
+                          }
+                        `}
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium">
+                            {label}
+                          </span>
+
+                          <Badge
+                            variant={
+                              role.type === "SYSTEM"
+                                ? "default"
+                                : "secondary"
+                            }
+                            className="shrink-0 text-[10px] font-normal"
+                          >
+                            {role.type}
+                          </Badge>
+                        </div>
+
+                        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                          {description}
+                        </p>
+
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {role.users_count}{" "}
+                          {role.users_count === 1
+                            ? "user"
+                            : "users"}{" "}
+                          · {role.permissions_count}{" "}
+                          {role.permissions_count === 1
+                            ? "permission"
+                            : "permissions"}
+                        </p>
+                      </div>
+                    </CommandItem>
+                  )
+                })}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+
+      {error ? (
+        <p
+          id="role-error"
+          role="alert"
+          className="flex items-start gap-1.5 text-sm text-destructive"
+        >
+          <AlertCircle
+            aria-hidden="true"
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+          />
+          {error}
+        </p>
+      ) : selected ? (
+        <div className="flex items-start gap-2.5 rounded-lg border bg-muted/30 p-3">
+          <ShieldCheck
+            aria-hidden="true"
+            className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+          />
+
+          <p className="text-xs leading-5 text-muted-foreground">
+            {getRoleDescription(selected)}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Password input                                                             */
+/* -------------------------------------------------------------------------- */
+
+function PasswordInput({
+  id,
+  value,
+  onChange,
+  onBlur,
+  placeholder,
+  invalid,
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  onBlur?: () => void
+  placeholder?: string
+  invalid?: boolean
+}) {
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        autoComplete="new-password"
+        className="pr-10"
+        aria-invalid={invalid}
+        aria-describedby={
+          invalid ? `${id}-error` : undefined
+        }
+      />
+
+      <button
+        type="button"
+        onClick={() => setVisible((current) => !current)}
+        aria-label={visible ? "Hide password" : "Show password"}
+        className="
+          absolute right-2 top-1/2 -translate-y-1/2 rounded p-1
+          text-muted-foreground transition-colors hover:text-foreground
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+        "
+      >
+        {visible ? (
+          <EyeOff aria-hidden="true" className="h-4 w-4" />
+        ) : (
+          <Eye aria-hidden="true" className="h-4 w-4" />
+        )}
+      </button>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Page                                                                       */
+/* -------------------------------------------------------------------------- */
+
+export default function UserFormPage() {
   const router = useRouter()
   const params = useParams()
 
-  /*
-  |--------------------------------------------------------------------------
-  | Route
-  |--------------------------------------------------------------------------
-  */
+  const userId =
+    typeof params?.id === "string" ? params.id : undefined
 
-  const roleId =
-    typeof params?.id === "string"
-      ? params.id
-      : Array.isArray(params?.id)
-        ? params.id[0]
-        : undefined
+  const locale =
+    typeof params?.locale === "string" ? params.locale : "or"
 
-  const isEditMode = Boolean(roleId)
+  const usersUrl = `/${locale}/dashboard/administration/users`
 
-  /*
-  |--------------------------------------------------------------------------
-  | Queries
-  |--------------------------------------------------------------------------
-  */
+  const isEditMode = Boolean(userId)
+
+  /* ---------------------------------------------------------------------- */
+  /* Server roles                                                           */
+  /* ---------------------------------------------------------------------- */
 
   const {
-    data: role,
-    isLoading: isRoleLoading,
-    isError: isRoleError,
-    error: roleError,
-  } = useRole(roleId)
+    data: roles = [],
+    isLoading: isRolesLoading,
+    isError: isRolesError,
+  } = useRoles({
+    per_page: 100,
+    sort_by: "name",
+    sort_direction: "asc",
+  })
+
+  /*
+   * Confirmed API envelope for GET roles:
+   *
+   * {
+   *   success: true,
+   *   message: "Roles retrieved successfully.",
+   *   data: [
+   *     {
+   *       id, name, guard_name, type,
+   *       users_count, permissions_count,
+   *       created_at, updated_at
+   *     },
+   *     ...
+   *   ],
+   *   meta: { timestamp, request_id, version, pagination }
+   * }
+   *
+   * `useRoles` currently resolves `data` to the *full envelope* above rather
+   * than the unwrapped Role[] array — confirmed by logging `roles`, which
+   * comes back as { success, message, data, meta }, not an array. Unwrapping
+   * belongs in the hook long-term, but this component unwraps defensively
+   * here so it works whether the hook returns the envelope, the bare array,
+   * or (briefly) undefined while loading.
+   */
+  const availableRoles = useMemo(() => {
+    if (Array.isArray(roles)) return roles
+
+    if (
+      roles &&
+      typeof roles === "object" &&
+      Array.isArray((roles as { data?: unknown }).data)
+    ) {
+      return (roles as { data: Role[] }).data
+    }
+
+    return []
+  }, [roles])
+
+  /* ---------------------------------------------------------------------- */
+  /* Existing user (edit mode)                                              */
+  /* ---------------------------------------------------------------------- */
 
   const {
-    data: permissions = [],
-    isLoading: isPermissionsLoading,
-    isError: isPermissionsError,
-    error: permissionsError,
-  } = usePermissions()
+    data: existingUser,
+    isLoading: isUserLoading,
+    isError: isUserError,
+  } = useUser(userId)
 
-  /*
-  |--------------------------------------------------------------------------
-  | Mutations
-  |--------------------------------------------------------------------------
-  */
+  /* ---------------------------------------------------------------------- */
+  /* Mutations                                                              */
+  /* ---------------------------------------------------------------------- */
 
-  const createRoleMutation = useCreateRole()
-  const updateRoleMutation = useUpdateRole()
+  const createUser = useCreateUser()
+  const updateUser = useUpdateUser()
+  const updateUserStatus = useUpdateUserStatus()
+  const resetUserPassword = useResetUserPassword()
+  const assignUserRoles = useAssignUserRoles()
 
-  /*
-  |--------------------------------------------------------------------------
-  | Permission Groups
-  |--------------------------------------------------------------------------
-  */
+  /* ---------------------------------------------------------------------- */
+  /* Initial form                                                           */
+  /* ---------------------------------------------------------------------- */
 
-  const permissionList = React.useMemo(
-    () =>
-      Array.isArray(permissions)
-        ? permissions
-        : [],
-    [permissions],
-  )
-
-  const permissionGroups = React.useMemo(
-    () => buildPermissionGroups(permissionList),
-    [permissionList],
-  )
-
-  /*
-  |--------------------------------------------------------------------------
-  | Available Permission Names
-  |--------------------------------------------------------------------------
-  */
-
-  const availablePermissionNames = React.useMemo(
-    () =>
-      new Set(
-        permissionList
-          .map((permission) => permission.name)
-          .filter(
-            (name): name is string =>
-              typeof name === "string" &&
-              name.trim().length > 0,
-          ),
-      ),
-    [permissionList],
-  )
-
-  /*
-  |--------------------------------------------------------------------------
-  | Form State
-  |--------------------------------------------------------------------------
-  |
-  | Form values are associated with the current route key.
-  |
-  | When a role is first loaded, initial values are derived
-  | directly from the query result. This avoids calling
-  | setState inside an effect.
-  |
-  | Once the user edits the form, local state takes precedence.
-  | React Query refetches therefore do not overwrite edits.
-  |
-  */
-
-  const formKey = roleId ?? "create-role"
-
-  const initialName =
-    isEditMode && role
-      ? typeof role.name === "string"
-        ? role.name
-        : ""
-      : ""
-
-  const initialSelectedPermissions = React.useMemo(
-    () =>
-      isEditMode && role
-        ? getRolePermissionNames(role.permissions)
-        : [],
-    [isEditMode, role],
-  )
-
-  const [formState, setFormState] =
-    React.useState<RoleFormState>({
-      key: "create-role",
+  const initialForm = useMemo<UserFormData>(
+    () => ({
       name: "",
-      selectedPermissions: [],
-    })
+      email: "",
+      phone: "",
+      role: "",
+      status: "ACTIVE",
+      password: "",
+      passwordConfirmation: "",
+    }),
+    [],
+  )
 
-  const isCurrentForm = formState.key === formKey
+  /* ---------------------------------------------------------------------- */
+  /* State                                                                  */
+  /* ---------------------------------------------------------------------- */
 
-  const name = isCurrentForm
-    ? formState.name
-    : initialName
+  const [form, setForm] =
+    useState<UserFormData>(initialForm)
 
-  const selectedPermissions = isCurrentForm
-    ? formState.selectedPermissions
-    : initialSelectedPermissions
+  const [errors, setErrors] = useState<
+    Partial<Record<FormField, string>>
+  >({})
+
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const [changingPassword, setChangingPassword] =
+    useState(!isEditMode)
 
   /*
-  |--------------------------------------------------------------------------
-  | Permission Group Expansion
-  |--------------------------------------------------------------------------
-  |
-  | null means no manual expansion changes have been made.
-  | In that case, all groups are open by default.
-  |
-  | An empty array is a valid user selection: all groups
-  | are explicitly closed.
-  |
-  */
+   * The last known-saved (or freshly loaded) snapshot of the form. For a
+   * new user this stays equal to `initialForm`. For an existing user it's
+   * replaced once `existingUser` arrives, below — so "unsaved changes" and
+   * the per-section dirty checks in handleSubmit compare against what's
+   * actually on the server, not against blank fields.
+   */
+  const [baseline, setBaseline] =
+    useState<UserFormData>(initialForm)
 
-  const [openGroups, setOpenGroups] =
-    React.useState<string[] | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
 
-  const visibleOpenGroups = React.useMemo(
+  const selectedRole = useMemo(
+    () => findRole(availableRoles, form.role),
+    [availableRoles, form.role],
+  )
+
+  const isDirty = useMemo(
     () =>
-      openGroups ??
-      permissionGroups.map((group) => group.key),
-    [openGroups, permissionGroups],
+      (Object.keys(baseline) as FormField[]).some(
+        (key) => form[key] !== baseline[key],
+      ),
+    [form, baseline],
   )
 
-  /*
-  |--------------------------------------------------------------------------
-  | System Role
-  |--------------------------------------------------------------------------
-  */
+  const strength = scorePassword(form.password)
 
-  const isSystemRole =
-    isEditMode && role?.type === "SYSTEM"
+  /* ---------------------------------------------------------------------- */
+  /* Populate the form once the existing user loads (edit mode)            */
+  /* ---------------------------------------------------------------------- */
 
-  /*
-  |--------------------------------------------------------------------------
-  | Derived State
-  |--------------------------------------------------------------------------
-  */
+  useEffect(() => {
+    if (!existingUser) return
 
-  const selectedCount = selectedPermissions.length
-
-  const normalizedName = normalizeRoleName(name)
-
-  const isSubmitting =
-    createRoleMutation.isPending ||
-    updateRoleMutation.isPending
-
-  /*
-  |--------------------------------------------------------------------------
-  | Form Field Actions
-  |--------------------------------------------------------------------------
-  */
-
-  const handleNameChange = React.useCallback(
-    (value: string) => {
-      setFormState({
-        key: formKey,
-        name: normalizeRoleName(value),
-        selectedPermissions,
-      })
-    },
-    [formKey, selectedPermissions],
-  )
-
-  const togglePermission = React.useCallback(
-    (permissionName: string, checked: boolean) => {
-      if (isSystemRole) {
-        return
+    /*
+     * ASSUMPTION: `is_active` and `name`/`email` are confirmed on `User`
+     * (they're referenced directly elsewhere, e.g. in the mutation hooks'
+     * success toasts). `phone` and how the assigned role is represented
+     * (`roles[0].name` vs a flat `role` field) are NOT confirmed — this
+     * reads both defensively. Adjust to match the real `User` type once
+     * you can check it.
+     */
+    const userWithUnconfirmedFields =
+      existingUser as unknown as User & {
+        phone?: string
+        role?: string
+        roles?: { name: string }[]
       }
 
-      setFormState((current) => {
-        const currentPermissions =
-          current.key === formKey
-            ? current.selectedPermissions
-            : initialSelectedPermissions
+    const mapped: UserFormData = {
+      name: existingUser.name ?? "",
+      email: existingUser.email ?? "",
+      phone: userWithUnconfirmedFields.phone ?? "",
+      role:
+        userWithUnconfirmedFields.roles?.[0]?.name ??
+        userWithUnconfirmedFields.role ??
+        "",
+      status: existingUser.is_active
+        ? "ACTIVE"
+        : "INACTIVE",
+      password: "",
+      passwordConfirmation: "",
+    }
 
-        const currentName =
-          current.key === formKey
-            ? current.name
-            : initialName
+    setForm(mapped)
+    setBaseline(mapped)
+  }, [existingUser])
 
-        if (checked) {
-          if (currentPermissions.includes(permissionName)) {
-            return current.key === formKey
-              ? current
-              : {
-                  key: formKey,
-                  name: currentName,
-                  selectedPermissions: currentPermissions,
-                }
-          }
+  /* ---------------------------------------------------------------------- */
+  /* Guard against losing work                                             */
+  /* ---------------------------------------------------------------------- */
 
-          return {
-            key: formKey,
-            name: currentName,
-            selectedPermissions: [
-              ...currentPermissions,
-              permissionName,
-            ],
-          }
-        }
+  useEffect(() => {
+    if (!isDirty || isSubmitting) return
 
-        return {
-          key: formKey,
-          name: currentName,
-          selectedPermissions: currentPermissions.filter(
-            (permission) => permission !== permissionName,
-          ),
-        }
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+
+    window.addEventListener("beforeunload", handler)
+
+    return () =>
+      window.removeEventListener("beforeunload", handler)
+  }, [isDirty, isSubmitting])
+
+  /* ---------------------------------------------------------------------- */
+  /* Field updates                                                          */
+  /* ---------------------------------------------------------------------- */
+
+  const updateField = useCallback(
+    <K extends FormField>(
+      field: K,
+      value: UserFormData[K],
+    ) => {
+      setForm((current) => ({
+        ...current,
+        [field]: value,
+      }))
+
+      setErrors((current) => {
+        if (!current[field]) return current
+
+        const next = { ...current }
+        delete next[field]
+
+        return next
       })
     },
-    [
-      formKey,
-      initialName,
-      initialSelectedPermissions,
-      isSystemRole,
-    ],
+    [],
   )
 
-  const toggleGroup = React.useCallback(
-    (groupKey: string) => {
-      setOpenGroups((current) => {
-        const currentGroups =
-          current ??
-          permissionGroups.map((group) => group.key)
+  /* ---------------------------------------------------------------------- */
+  /* Validation                                                             */
+  /* ---------------------------------------------------------------------- */
 
-        return currentGroups.includes(groupKey)
-          ? currentGroups.filter((key) => key !== groupKey)
-          : [...currentGroups, groupKey]
-      })
-    },
-    [permissionGroups],
-  )
+  const validate = useCallback(
+    (data: UserFormData) => {
+      const next: Partial<Record<FormField, string>> = {}
 
-  const isGroupFullySelected = React.useCallback(
-    (group: PermissionGroup): boolean => {
-      if (group.permissions.length === 0) {
-        return false
+      if (!data.name.trim()) {
+        next.name = "Enter the user's full name."
       }
 
-      return group.permissions.every((permission) =>
-        selectedPermissions.includes(permission.name),
-      )
-    },
-    [selectedPermissions],
-  )
-
-  const toggleGroupPermissions = React.useCallback(
-    (group: PermissionGroup) => {
-      if (isSystemRole) {
-        return
+      if (!data.email.trim()) {
+        next.email = "Enter an email address."
+      } else if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)
+      ) {
+        next.email =
+          "That doesn't look like an email address. Check for a missing @ or domain."
       }
 
-      const permissionNames = group.permissions
-        .map((permission) => permission.name)
-        .filter(
-          (permissionName): permissionName is string =>
-            typeof permissionName === "string" &&
-            permissionName.trim().length > 0,
+      if (!data.role) {
+        next.role = "Choose the role this user will have."
+      } else if (
+        availableRoles.length > 0 &&
+        !availableRoles.some(
+          (role) => role.name === data.role,
         )
-
-      if (permissionNames.length === 0) {
-        return
+      ) {
+        next.role =
+          "The selected role is no longer available. Choose another role."
       }
 
-      const fullySelected = permissionNames.every(
-        (permissionName) =>
-          selectedPermissions.includes(permissionName),
-      )
+      const passwordRequired =
+        !isEditMode || changingPassword
 
-      setFormState((current) => {
-        const currentPermissions =
-          current.key === formKey
-            ? current.selectedPermissions
-            : initialSelectedPermissions
+      if (passwordRequired && !data.password) {
+        next.password = "Set a password for this account."
+      } else if (
+        data.password &&
+        data.password.length < 8
+      ) {
+        next.password = "Use at least 8 characters."
+      }
 
-        const currentName =
-          current.key === formKey
-            ? current.name
-            : initialName
+      if (
+        (passwordRequired || data.password) &&
+        data.password !== data.passwordConfirmation
+      ) {
+        next.passwordConfirmation =
+          "The two passwords don't match."
+      }
 
-        const nextPermissions = fullySelected
-          ? currentPermissions.filter(
-              (permission) =>
-                !permissionNames.includes(permission),
-            )
-          : Array.from(
-              new Set([
-                ...currentPermissions,
-                ...permissionNames,
-              ]),
-            )
-
-        return {
-          key: formKey,
-          name: currentName,
-          selectedPermissions: nextPermissions,
-        }
-      })
+      return next
     },
     [
-      formKey,
-      initialName,
-      initialSelectedPermissions,
-      isSystemRole,
-      selectedPermissions,
+      isEditMode,
+      changingPassword,
+      availableRoles,
     ],
   )
 
-  /*
-  |--------------------------------------------------------------------------
-  | Submit
-  |--------------------------------------------------------------------------
-  */
+  const validateField = (field: FormField) => {
+    const result = validate(form)
+
+    setErrors((current) => ({
+      ...current,
+      ...(result[field]
+        ? { [field]: result[field] }
+        : { [field]: undefined }),
+    }))
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Submit                                                                 */
+  /* ---------------------------------------------------------------------- */
 
   const handleSubmit = async (
-    event: React.FormEvent<HTMLFormElement>,
+    event?: FormEvent<HTMLFormElement>,
   ) => {
-    event.preventDefault()
+    event?.preventDefault()
 
-    if (isSystemRole) {
+    const nextErrors = validate(form)
+
+    setErrors(nextErrors)
+
+    const firstError = (
+      Object.keys(nextErrors) as FormField[]
+    ).find((key) => nextErrors[key])
+
+    if (firstError) {
+      const target =
+        formRef.current?.querySelector<HTMLElement>(
+          `#${firstError}`,
+        )
+
+      target?.focus()
+
+      target?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      })
+
       return
     }
 
-    const finalName = normalizeRoleName(name)
+    setIsSubmitting(true)
 
-    if (!finalName) {
-      return
-    }
+    try {
+      if (isEditMode && userId) {
+        /*
+         * Edit mode: only call the mutations for sections that actually
+         * changed, each against its own endpoint per the hooks file
+         * ("Roles, password and account status are handled by their
+         * dedicated mutations").
+         */
 
-    const validSelectedPermissions =
-      selectedPermissions.filter((permissionName) =>
-        availablePermissionNames.has(permissionName),
-      )
+        const profileChanged =
+          form.name !== baseline.name ||
+          form.email !== baseline.email ||
+          form.phone !== baseline.phone
 
-    if (!isEditMode) {
-      const payload: CreateRoleRequest = {
-        name: finalName,
-        permissions: validSelectedPermissions,
+        const roleChanged = form.role !== baseline.role
+
+        const statusChanged =
+          form.status !== baseline.status
+
+        const passwordChanged =
+          changingPassword && form.password.length > 0
+
+        const tasks: Promise<unknown>[] = []
+
+        if (profileChanged) {
+          tasks.push(
+            updateUser.mutateAsync({
+              userId,
+              data: {
+                name: form.name,
+                email: form.email,
+                phone: form.phone || undefined,
+              },
+            }),
+          )
+        }
+
+        if (roleChanged) {
+          /*
+           * Confirmed shape per the hooks file: { roles: string[] }. The
+           * role picker here is single-select, so it's sent as a
+           * one-item array.
+           */
+          tasks.push(
+            assignUserRoles.mutateAsync({
+              userId,
+              data: { roles: [form.role] },
+            }),
+          )
+        }
+
+        if (statusChanged) {
+          /*
+           * Confirmed shape per the hooks file: { is_active: boolean }.
+           */
+          tasks.push(
+            updateUserStatus.mutateAsync({
+              userId,
+              data: {
+                is_active: form.status === "ACTIVE",
+              },
+            }),
+          )
+        }
+
+        if (passwordChanged) {
+          /*
+           * ASSUMPTION: `ResetUserPasswordRequest`'s field names aren't
+           * confirmed here — adjust `password` / `password_confirmation`
+           * if the backend expects different keys.
+           */
+          tasks.push(
+            resetUserPassword.mutateAsync({
+              userId,
+              data: {
+                password: form.password,
+                password_confirmation:
+                  form.passwordConfirmation,
+              },
+            }),
+          )
+        }
+
+        await Promise.all(tasks)
+      } else {
+        /*
+         * ASSUMPTION: `CreateUserRequest`'s field names aren't confirmed
+         * here, particularly `roles` (vs a singular `role`) and
+         * `is_active` (vs the backend defaulting new users to active).
+         * Adjust to match the real request type.
+         */
+        await createUser.mutateAsync({
+          name: form.name,
+          email: form.email,
+          phone: form.phone || undefined,
+          password: form.password,
+          roles: [form.role],
+          is_active: form.status === "ACTIVE",
+          password_confirmation:form.passwordConfirmation
+        })
       }
 
-      await createRoleMutation.mutateAsync(payload)
-      router.push(ROLES_URL)
-      return
+      router.push(usersUrl)
+      router.refresh()
+    } catch {
+      /*
+       * Each mutation already surfaces its own error toast via its
+       * `onError` handler (see the hooks file), so there's nothing
+       * further to show here — just stay on the page so the person can
+       * fix the problem and retry.
+       */
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Keyboard shortcut                                                      */
+  /* ---------------------------------------------------------------------- */
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() === "s" &&
+        (event.metaKey || event.ctrlKey)
+      ) {
+        event.preventDefault()
+        void handleSubmit()
+      }
     }
 
-    if (!roleId) {
-      return
+    window.addEventListener("keydown", onKeyDown)
+
+    return () =>
+      window.removeEventListener("keydown", onKeyDown)
+  })
+
+  /* ---------------------------------------------------------------------- */
+  /* Cancel                                                                 */
+  /* ---------------------------------------------------------------------- */
+
+  const handleCancel = () => {
+    if (isDirty) {
+      const leave = window.confirm(
+        "Leave without saving? Your changes will be lost.",
+      )
+
+      if (!leave) return
     }
 
-    const payload: UpdateRoleRequest = {
-      name: finalName,
-      permissions: validSelectedPermissions,
-    }
-
-    await updateRoleMutation.mutateAsync({
-      roleId,
-      data: payload,
-    })
-
-    router.push(ROLES_URL)
+    router.push(usersUrl)
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Loading
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    (isEditMode && isRoleLoading) ||
-    isPermissionsLoading
-  ) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center p-6">
-        <div
-          className="flex items-center gap-2 text-sm text-muted-foreground"
-          role="status"
-          aria-live="polite"
-        >
-          <KeyRound className="size-4 animate-pulse" />
-          <span>Loading role permissions...</span>
-        </div>
-      </div>
-    )
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Role Error
-  |--------------------------------------------------------------------------
-  */
-
-  if (isEditMode && isRoleError) {
-    return (
-      <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 p-6">
-        <ShieldCheck className="size-10 text-muted-foreground" />
-
-        <div className="text-center">
-          <h2 className="font-semibold">Unable to load role</h2>
-
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            {roleError?.message ??
-              "The requested role could not be loaded."}
-          </p>
-        </div>
-
-        <Button variant="outline" asChild>
-          <Link href={ROLES_URL}>
-            <ArrowLeft className="mr-2 size-4" />
-            Back to Roles
-          </Link>
-        </Button>
-      </div>
-    )
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Permission Error
-  |--------------------------------------------------------------------------
-  */
-
-  if (isPermissionsError) {
-    return (
-      <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 p-6">
-        <KeyRound className="size-10 text-muted-foreground" />
-
-        <div className="text-center">
-          <h2 className="font-semibold">
-            Unable to load permissions
-          </h2>
-
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            {permissionsError?.message ??
-              "Available permissions could not be loaded."}
-          </p>
-        </div>
-
-        <Button variant="outline" asChild>
-          <Link href={ROLES_URL}>
-            <ArrowLeft className="mr-2 size-4" />
-            Back to Roles
-          </Link>
-        </Button>
-      </div>
-    )
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Page
-  |--------------------------------------------------------------------------
-  */
+  /* ---------------------------------------------------------------------- */
+  /* Render                                                                 */
+  /* ---------------------------------------------------------------------- */
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
-      {/* Header */}
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      className="mx-auto w-full max-w-4xl pb-24"
+    >
+      {/* ---------------------------------------------------------------- */}
+      {/* Header                                                           */}
+      {/* ---------------------------------------------------------------- */}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <Button variant="outline" size="icon" asChild>
-            <Link href={ROLES_URL}>
-              <ArrowLeft className="size-4" />
-              <span className="sr-only">Back to roles</span>
-            </Link>
-          </Button>
+      <header className="flex flex-wrap items-center gap-3 py-6">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={handleCancel}
+          aria-label="Back to users"
+          className="shrink-0"
+        >
+          <ArrowLeft
+            aria-hidden="true"
+            className="h-4 w-4"
+          />
+        </Button>
 
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                {isEditMode ? "Update Role" : "Create Role"}
-              </h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-xl font-semibold tracking-tight">
+            {isEditMode
+              ? form.name || "Edit user"
+              : "New user"}
+          </h1>
 
-              {isEditMode && role && (
-                <>
-                  <Badge variant="outline">
-                    {formatRoleName(role.name)}
-                  </Badge>
-
-                  <Badge
-                    variant={isSystemRole ? "default" : "secondary"}
-                  >
-                    {role.type}
-                  </Badge>
-                </>
-              )}
-            </div>
-
-            <p className="mt-1 text-sm text-muted-foreground">
-              {isEditMode
-                ? "Update the role name and assigned permissions."
-                : "Create a role and assign permissions to control system access."}
-            </p>
-          </div>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {isEditMode
+              ? "Changes take effect the next time this person signs in."
+              : "Set up an account and choose what this person can reach."}
+          </p>
         </div>
-      </div>
 
-      {/* System Role Notice */}
+        {isDirty && (
+          <Badge
+            variant="secondary"
+            className="shrink-0 font-normal"
+          >
+            Unsaved changes
+          </Badge>
+        )}
+      </header>
 
-      {isSystemRole && (
-        <Card className="border-muted">
-          <CardContent className="flex items-start gap-3 p-4">
-            <ShieldCheck className="mt-0.5 size-5 shrink-0" />
+      {isEditMode && isUserError && (
+        <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle
+              aria-hidden="true"
+              className="mt-0.5 h-4 w-4 shrink-0 text-destructive"
+            />
 
             <div>
-              <p className="font-medium">System Role</p>
+              <p className="text-sm font-medium">
+                Unable to load this user
+              </p>
 
-              <p className="mt-1 text-sm text-muted-foreground">
-                This role is managed by the system. Its name and
-                permissions cannot be modified.
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Their details could not be retrieved from
+                the server. Please refresh the page and
+                try again.
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
-      {/* Form */}
-
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-6"
-      >
-        {/* Basic Information */}
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="size-5" />
-              <CardTitle>Basic Information</CardTitle>
-            </div>
-
-            <CardDescription>
-              Define the role name used by the authorization system.
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent>
-            <div className="flex max-w-2xl flex-col gap-2">
-              <Label htmlFor="role-name">Role Name</Label>
-
-              <Input
-                id="role-name"
-                value={name}
-                disabled={isSystemRole}
-                onChange={(event) =>
-                  handleNameChange(event.target.value)
-                }
-                placeholder="e.g. ANALYTICS_OFFICER"
-                autoComplete="off"
-                spellCheck={false}
-                required
-              />
-
-              <p className="text-xs text-muted-foreground">
-                Use uppercase letters, numbers, and underscores.
-                Example: ANALYTICS_OFFICER.
-              </p>
-
-              {name.trim() && normalizedName !== name && (
-                <p className="text-xs text-muted-foreground">
-                  Will be saved as:{" "}
-                  <span className="font-mono font-medium">
-                    {normalizedName}
-                  </span>
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Summary */}
-
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card>
-            <CardContent className="flex items-center gap-3 p-5">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-                <ShieldCheck className="size-5" />
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  Role Type
-                </p>
-                <p className="font-semibold">
-                  {isSystemRole ? "System Role" : "Custom Role"}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="flex items-center gap-3 p-5">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-                <KeyRound className="size-5" />
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  Selected Permissions
-                </p>
-                <p className="font-semibold">{selectedCount}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="flex items-center gap-3 p-5">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-                <Users className="size-5" />
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  Assigned Users
-                </p>
-                <p className="font-semibold">
-                  {isEditMode
-                    ? `${role?.users_count ?? 0} users`
-                    : "0 users"}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+      {isEditMode && isUserLoading && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+          <Loader2
+            aria-hidden="true"
+            className="h-4 w-4 animate-spin"
+          />
+          Loading this user's details...
         </div>
+      )}
 
-        {/* Permissions */}
+      <Card>
+        <CardContent className="divide-y px-6 py-0">
+          {/* ------------------------------------------------------------ */}
+          {/* Identity                                                      */}
+          {/* ------------------------------------------------------------ */}
 
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle>Permissions</CardTitle>
+          <FormSection
+            title="Identity"
+            description="How this person is identified across the system and contacted about their account."
+          >
+            <div className="flex items-center gap-4 rounded-lg border bg-muted/30 p-3">
+              <Avatar className="h-11 w-11">
+                <AvatarFallback className="text-sm font-medium">
+                  {getInitials(form.name)}
+                </AvatarFallback>
+              </Avatar>
 
-                <CardDescription>
-                  Select the permissions this role should have.
-                </CardDescription>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {form.name || "No name yet"}
+                </p>
+
+                <p className="truncate text-xs text-muted-foreground">
+                  {selectedRole
+                    ? formatRoleName(selectedRole.name)
+                    : "No role assigned"}
+                </p>
               </div>
-
-              <Badge variant="secondary">
-                {selectedCount} selected
-              </Badge>
             </div>
-          </CardHeader>
 
-          <CardContent className="flex flex-col gap-4">
-            {permissionGroups.map((group) => {
-              const isOpen = visibleOpenGroups.includes(group.key)
+            <Field
+              id="name"
+              label="Full name"
+              required
+              error={errors.name}
+            >
+              <Input
+                id="name"
+                value={form.name}
+                onChange={(event) =>
+                  updateField(
+                    "name",
+                    event.target.value,
+                  )
+                }
+                onBlur={() => validateField("name")}
+                placeholder="Abebe Kebede"
+                autoComplete="name"
+                aria-invalid={Boolean(errors.name)}
+                aria-describedby={
+                  errors.name
+                    ? "name-error"
+                    : undefined
+                }
+              />
+            </Field>
 
-              const isFullySelected =
-                isGroupFullySelected(group)
+            <Field
+              id="email"
+              label="Email address"
+              required
+              hint="Used to sign in and to receive account notices."
+              error={errors.email}
+            >
+              <Input
+                id="email"
+                type="email"
+                value={form.email}
+                onChange={(event) =>
+                  updateField(
+                    "email",
+                    event.target.value,
+                  )
+                }
+                onBlur={() => validateField("email")}
+                placeholder="name@adama.gov.et"
+                autoComplete="email"
+                aria-invalid={Boolean(errors.email)}
+                aria-describedby={
+                  errors.email
+                    ? "email-error"
+                    : "email-hint"
+                }
+              />
+            </Field>
 
-              return (
-                <div
-                  key={group.key}
-                  className="overflow-hidden rounded-lg border"
+            <Field
+              id="phone"
+              label="Phone number"
+              hint="Only used if someone needs to reach this person about their account."
+            >
+              <Input
+                id="phone"
+                type="tel"
+                value={form.phone}
+                onChange={(event) =>
+                  updateField(
+                    "phone",
+                    event.target.value,
+                  )
+                }
+                placeholder="+251 9X XXX XXXX"
+                autoComplete="tel"
+                aria-describedby="phone-hint"
+              />
+            </Field>
+          </FormSection>
+
+          {/* ------------------------------------------------------------ */}
+          {/* Access                                                        */}
+          {/* ------------------------------------------------------------ */}
+
+          <FormSection
+            title="Access"
+            description="The role determines the permissions assigned to this user."
+          >
+            <Field
+              id="role"
+              label="Role"
+              required
+              error={errors.role}
+            >
+              {isRolesError ? (
+                <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle
+                      aria-hidden="true"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-destructive"
+                    />
+
+                    <div>
+                      <p className="text-sm font-medium">
+                        Unable to load roles
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        The available roles could not be
+                        retrieved from the server. Please
+                        refresh the page and try again.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <RolePicker
+                  roles={availableRoles}
+                  loading={isRolesLoading}
+                  value={form.role}
+                  onChange={(value) =>
+                    updateField("role", value)
+                  }
+                  onBlur={() => validateField("role")}
+                  error={errors.role}
+                />
+              )}
+            </Field>
+
+            <Separator />
+
+            <Field
+              id="status"
+              label="Account status"
+              hint={
+                form.status === "ACTIVE"
+                  ? "This person can sign in."
+                  : "This person keeps their account but cannot sign in."
+              }
+            >
+              <Select
+                value={form.status}
+                onValueChange={(value) =>
+                  updateField(
+                    "status",
+                    value as UserStatus,
+                  )
+                }
+              >
+                <SelectTrigger
+                  id="status"
+                  className="sm:max-w-xs"
+                  aria-describedby="status-hint"
                 >
-                  {/* Group Header */}
+                  <SelectValue />
+                </SelectTrigger>
 
-                  <div className="flex items-center justify-between gap-3 bg-muted/30 px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(group.key)}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                      aria-expanded={isOpen}
-                      aria-controls={`permission-group-${group.key}`}
-                    >
-                      <ChevronDown
-                        className={`size-4 shrink-0 transition-transform ${
-                          isOpen ? "" : "-rotate-90"
-                        }`}
-                      />
+                <SelectContent>
+                  <SelectItem value="ACTIVE">
+                    Active
+                  </SelectItem>
 
-                      <div className="min-w-0">
-                        <p className="font-medium">{group.label}</p>
+                  <SelectItem value="INACTIVE">
+                    Inactive
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FormSection>
 
-                        {group.description && (
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {group.description}
-                          </p>
+          {/* ------------------------------------------------------------ */}
+          {/* Password                                                      */}
+          {/* ------------------------------------------------------------ */}
+
+          <FormSection
+            title="Password"
+            description={
+              isEditMode
+                ? "Set a new password only if this person has lost access to their account."
+                : "Share this password with the person directly. Ask them to change it after they sign in."
+            }
+          >
+            {isEditMode && !changingPassword ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-4">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck
+                    aria-hidden="true"
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                  />
+
+                  <p className="text-sm text-muted-foreground">
+                    The current password stays in place.
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setChangingPassword(true)
+                  }
+                >
+                  Set a new password
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Field
+                  id="password"
+                  label={
+                    isEditMode
+                      ? "New password"
+                      : "Password"
+                  }
+                  required
+                  error={errors.password}
+                >
+                  <PasswordInput
+                    id="password"
+                    value={form.password}
+                    onChange={(value) =>
+                      updateField(
+                        "password",
+                        value,
+                      )
+                    }
+                    onBlur={() =>
+                      validateField("password")
+                    }
+                    placeholder="At least 8 characters"
+                    invalid={Boolean(
+                      errors.password,
+                    )}
+                  />
+
+                  {form.password && (
+                    <div className="space-y-1.5 pt-1">
+                      <div
+                        className="flex gap-1"
+                        aria-hidden="true"
+                      >
+                        {[1, 2, 3, 4].map(
+                          (step) => (
+                            <span
+                              key={step}
+                              className={`
+                                h-1 flex-1 rounded-full transition-colors
+                                ${
+                                  step <= strength
+                                    ? STRENGTH_COLORS[
+                                        strength
+                                      ]
+                                    : "bg-muted"
+                                }
+                              `}
+                            />
+                          ),
                         )}
                       </div>
-                    </button>
 
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={
-                        isSystemRole ||
-                        group.permissions.length === 0
-                      }
-                      onClick={() =>
-                        toggleGroupPermissions(group)
-                      }
-                    >
-                      {isFullySelected ? "Clear" : "Select All"}
-                    </Button>
-                  </div>
+                      <p
+                        aria-live="polite"
+                        className="text-xs text-muted-foreground"
+                      >
+                        {STRENGTH_LABELS[strength]}
 
-                  {/* Group Permissions */}
-
-                  {isOpen && (
-                    <div
-                      id={`permission-group-${group.key}`}
-                      className="divide-y"
-                    >
-                      {group.permissions.map((permission) => {
-                        const isSelected =
-                          selectedPermissions.includes(
-                            permission.name,
-                          )
-
-                        return (
-                          <div
-                            key={permission.id}
-                            className="flex flex-col gap-3 px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
-                          >
-                            <div className="min-w-0">
-                              <p className="font-medium">
-                                {permission.label}
-                              </p>
-
-                              {permission.description && (
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {permission.description}
-                                </p>
-                              )}
-
-                              <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
-                                {permission.name}
-                              </p>
-                            </div>
-
-                            <label
-                              className={`flex shrink-0 items-center gap-2 text-sm ${
-                                isSystemRole
-                                  ? "cursor-not-allowed opacity-60"
-                                  : "cursor-pointer"
-                              }`}
-                            >
-                              <Checkbox
-                                checked={isSelected}
-                                disabled={isSystemRole}
-                                onCheckedChange={(checked) => {
-                                  if (
-                                    checked === true ||
-                                    checked === false
-                                  ) {
-                                    togglePermission(
-                                      permission.name,
-                                      checked,
-                                    )
-                                  }
-                                }}
-                                aria-label={`Grant ${permission.name}`}
-                              />
-
-                              <span>
-                                {permission.action_label}
-                              </span>
-                            </label>
-                          </div>
-                        )
-                      })}
+                        {strength < 3 &&
+                          " — mix in capitals, numbers, or symbols."}
+                      </p>
                     </div>
                   )}
-                </div>
-              )
-            })}
+                </Field>
 
-            {/* Empty State */}
+                <Field
+                  id="passwordConfirmation"
+                  label="Confirm password"
+                  required
+                  error={
+                    errors.passwordConfirmation
+                  }
+                >
+                  <PasswordInput
+                    id="passwordConfirmation"
+                    value={
+                      form.passwordConfirmation
+                    }
+                    onChange={(value) =>
+                      updateField(
+                        "passwordConfirmation",
+                        value,
+                      )
+                    }
+                    onBlur={() =>
+                      validateField(
+                        "passwordConfirmation",
+                      )
+                    }
+                    placeholder="Type it again"
+                    invalid={Boolean(
+                      errors.passwordConfirmation,
+                    )}
+                  />
+                </Field>
 
-            {permissionGroups.length === 0 && (
-              <div className="rounded-lg border border-dashed p-8 text-center">
-                <KeyRound className="mx-auto size-8 text-muted-foreground" />
+                {isEditMode && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-2"
+                    onClick={() => {
+                      setChangingPassword(false)
 
-                <p className="mt-3 font-medium">
-                  No permissions available
-                </p>
+                      updateField(
+                        "password",
+                        "",
+                      )
 
-                <p className="mt-1 text-sm text-muted-foreground">
-                  No API permissions are currently available for role
-                  assignment.
-                </p>
-              </div>
+                      updateField(
+                        "passwordConfirmation",
+                        "",
+                      )
+                    }}
+                  >
+                    Keep the current password
+                  </Button>
+                )}
+              </>
             )}
-          </CardContent>
-        </Card>
+          </FormSection>
+        </CardContent>
+      </Card>
 
-        {/* Actions */}
+      {/* ---------------------------------------------------------------- */}
+      {/* Actions                                                          */}
+      {/* ---------------------------------------------------------------- */}
 
-        <div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" asChild>
-            <Link href={ROLES_URL}>Cancel</Link>
+      <div
+        className="
+          sticky bottom-0 z-10 mt-4 flex flex-col-reverse items-stretch
+          gap-3 border-t bg-background/95 py-4 backdrop-blur
+          supports-[backdrop-filter]:bg-background/80
+          sm:flex-row sm:items-center sm:justify-between
+        "
+      >
+        <p className="text-xs text-muted-foreground sm:pl-1">
+          {selectedRole
+            ? `${formatRoleName(selectedRole.name)} · ${getRoleScope(selectedRole)}`
+            : isRolesLoading
+              ? "Loading roles..."
+              : "No role chosen yet"}
+        </p>
+
+        <div className="flex flex-col-reverse gap-3 sm:flex-row">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={handleCancel}
+            disabled={isSubmitting}
+          >
+            Cancel
           </Button>
 
           <Button
             type="submit"
             disabled={
               isSubmitting ||
-              Boolean(isSystemRole) ||
-              !normalizedName
+              (isEditMode && !isDirty) ||
+              (isEditMode &&
+                (isUserLoading || isUserError)) ||
+              isRolesLoading ||
+              isRolesError ||
+              availableRoles.length === 0
             }
           >
             {isSubmitting ? (
-              "Saving..."
+              <Loader2
+                aria-hidden="true"
+                className="mr-2 h-4 w-4 animate-spin"
+              />
             ) : (
-              <>
-                <Check className="mr-2 size-4" />
-                {isEditMode ? "Update Role" : "Create Role"}
-              </>
+              <Save
+                aria-hidden="true"
+                className="mr-2 h-4 w-4"
+              />
             )}
+
+            {isSubmitting
+              ? "Saving"
+              : isEditMode
+                ? "Save changes"
+                : "Create user"}
           </Button>
         </div>
-      </form>
-    </div>
+      </div>
+    </form>
   )
 }
-
-export default RoleFormPage
