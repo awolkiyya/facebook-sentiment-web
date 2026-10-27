@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type RefObject,
+  type KeyboardEvent,
 } from "react";
 
 import {
@@ -56,7 +57,6 @@ interface Props {
   minuteStep?: number;
 }
 
-/** Which panel the popover body is showing. */
 type PickerView = "days" | "months" | "years";
 
 // =====================================================
@@ -68,9 +68,15 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n));
 
-function formatTime(hour24: number, minute: number, format: "12h" | "24h") {
+function formatTime(
+  hour24: number,
+  minute: number,
+  format: "12h" | "24h",
+) {
   if (format === "12h") {
-    return `${hour24 % 12 || 12}:${pad(minute)} ${hour24 < 12 ? "AM" : "PM"}`;
+    return `${hour24 % 12 || 12}:${pad(minute)} ${
+      hour24 < 12 ? "AM" : "PM"
+    }`;
   }
 
   return `${pad(hour24)}:${pad(minute)}`;
@@ -78,13 +84,11 @@ function formatTime(hour24: number, minute: number, format: "12h" | "24h") {
 
 // =====================================================
 // TIME FIELD
-// Typed numeric input with arrow-key / button stepping.
 // =====================================================
 
 interface TimeFieldProps {
   id: string;
   label: string;
-  /** Value as displayed (1-12 for 12h hours, 0-23 for 24h hours, 0-59 minutes). */
   value: number;
   min: number;
   max: number;
@@ -92,7 +96,6 @@ interface TimeFieldProps {
   disabled?: boolean;
   inputRef?: RefObject<HTMLInputElement | null>;
   onCommit: (value: number) => void;
-  /** Called once the field is complete so focus can move on. */
   onFilled?: () => void;
 }
 
@@ -103,28 +106,32 @@ function TimeField({
   min,
   max,
   step = 1,
-  disabled,
+  disabled = false,
   inputRef,
   onCommit,
   onFilled,
 }: TimeFieldProps) {
-  const [text, setText] = useState(pad(value));
+  const [text, setText] = useState(() => pad(value));
   const [editing, setEditing] = useState(false);
 
-  // Mirror the external value whenever the user is not typing.
-  useEffect(() => {
-    if (!editing) {
-      setText(pad(value));
-    }
-  }, [value, editing]);
+  // Use the external value when not editing, avoiding effect-based
+  // state synchronization when the parent changes the time.
+  const displayedText = editing ? text : pad(value);
 
   const commitText = (raw: string) => {
-    if (raw === "") {
+    if (raw.trim() === "") {
       setText(pad(value));
       return;
     }
 
-    const next = clamp(Number.parseInt(raw, 10), min, max);
+    const parsed = Number.parseInt(raw, 10);
+
+    if (!Number.isFinite(parsed)) {
+      setText(pad(value));
+      return;
+    }
+
+    const next = clamp(parsed, min, max);
 
     onCommit(next);
     setText(pad(next));
@@ -133,9 +140,13 @@ function TimeField({
   const stepBy = (direction: 1 | -1) => {
     let next = value + direction * step;
 
-    // Wrap around so 23 -> 00 and 59 -> 00 feel natural.
-    if (next > max) next = min;
-    if (next < min) next = max;
+    if (next > max) {
+      next = min;
+    }
+
+    if (next < min) {
+      next = max;
+    }
 
     onCommit(next);
     setText(pad(next));
@@ -155,7 +166,7 @@ function TimeField({
           inputMode="numeric"
           autoComplete="off"
           disabled={disabled}
-          value={text}
+          value={displayedText}
           maxLength={2}
           aria-label={label}
           onFocus={(event) => {
@@ -163,16 +174,16 @@ function TimeField({
             event.currentTarget.select();
           }}
           onBlur={() => {
-            setEditing(false);
             commitText(text);
+            setEditing(false);
           }}
           onChange={(event) => {
-            const digits = event.target.value.replace(/\D/g, "").slice(0, 2);
+            const digits = event.target.value
+              .replace(/\D/g, "")
+              .slice(0, 2);
 
             setText(digits);
 
-            // Complete when two digits are typed, or when a single digit
-            // can no longer grow into a valid value (e.g. "3" for hours).
             const complete =
               digits.length === 2 ||
               (digits.length === 1 && Number(digits) * 10 > max);
@@ -202,7 +213,6 @@ function TimeField({
           )}
         />
 
-        {/* Mouse / touch steppers. Keyboard users have the arrow keys. */}
         <div className="absolute inset-y-0 right-0 flex w-6 flex-col">
           <button
             type="button"
@@ -215,6 +225,7 @@ function TimeField({
           >
             <ChevronUp className="h-3.5 w-3.5" />
           </button>
+
           <button
             type="button"
             tabIndex={-1}
@@ -274,32 +285,41 @@ export function EthiopianDatePicker({
   const [selected, setSelected] = useState<Date | undefined>(value);
   const [search, setSearch] = useState("");
 
-  // Time is kept as 24h numbers; display conversion happens at the edges.
   const [hour24, setHour24] = useState(value?.getHours() ?? 0);
   const [minute, setMinute] = useState(value?.getMinutes() ?? 0);
+
+  // Track the last external value processed by this component.
+  // A timestamp comparison also handles new Date instances representing
+  // the same moment without unnecessary state updates.
+  const [syncedValueTimestamp, setSyncedValueTimestamp] = useState(
+    () => value?.getTime(),
+  );
 
   const yearListRef = useRef<HTMLDivElement>(null);
   const activeYearRef = useRef<HTMLButtonElement>(null);
   const minuteInputRef = useRef<HTMLInputElement>(null);
 
   // ===================================================
-  // SYNC EXTERNAL VALUE
+  // SYNCHRONIZE EXTERNAL VALUE
   // ===================================================
 
-  useEffect(() => {
+  // This guarded update runs only when the external timestamp changes.
+  // React retries the render with the updated state before committing it.
+  const valueTimestamp = value?.getTime();
+
+  if (valueTimestamp !== syncedValueTimestamp) {
+    setSyncedValueTimestamp(valueTimestamp);
     setSelected(value);
 
-    if (!value) {
-      return;
+    if (value) {
+      const eth = gregorianToEth(value);
+
+      setYear(eth.year);
+      setMonth(eth.month);
+      setHour24(value.getHours());
+      setMinute(value.getMinutes());
     }
-
-    const eth = gregorianToEth(value);
-
-    setYear(eth.year);
-    setMonth(eth.month);
-    setHour24(value.getHours());
-    setMinute(value.getMinutes());
-  }, [value]);
+  }
 
   // ===================================================
   // YEAR RULES
@@ -307,7 +327,10 @@ export function EthiopianDatePicker({
 
   const isYearAllowed = (targetYear: number) => {
     if (isLimited) {
-      return targetYear === currentYear || targetYear === previousYear;
+      return (
+        targetYear === currentYear ||
+        targetYear === previousYear
+      );
     }
 
     return targetYear >= minYear && targetYear <= maxYear;
@@ -317,7 +340,10 @@ export function EthiopianDatePicker({
   // MONTH RULES
   // ===================================================
 
-  const isMonthAllowed = (targetYear: number, targetMonth: number) => {
+  const isMonthAllowed = (
+    targetYear: number,
+    targetMonth: number,
+  ) => {
     if (!isYearAllowed(targetYear)) {
       return false;
     }
@@ -337,8 +363,10 @@ export function EthiopianDatePicker({
     return false;
   };
 
-  /** Closest allowed month when the year changes (LIMITED mode). */
-  const clampMonth = (targetYear: number, targetMonth: number) => {
+  const clampMonth = (
+    targetYear: number,
+    targetMonth: number,
+  ) => {
     if (isMonthAllowed(targetYear, targetMonth)) {
       return targetMonth;
     }
@@ -363,7 +391,8 @@ export function EthiopianDatePicker({
   // DATE HELPERS
   // ===================================================
 
-  const isToday = (date: Date) => date.toDateString() === today.toDateString();
+  const isToday = (date: Date) =>
+    date.toDateString() === today.toDateString();
 
   const isSameDay = (a?: Date, b?: Date) =>
     Boolean(a && b && a.toDateString() === b.toDateString());
@@ -420,7 +449,10 @@ export function EthiopianDatePicker({
   // CALENDAR DATA
   // ===================================================
 
-  const days = useMemo(() => generateEthCalendar(year, month), [year, month]);
+  const days = useMemo(
+    () => generateEthCalendar(year, month),
+    [year, month],
+  );
 
   // ===================================================
   // SEARCH
@@ -462,7 +494,6 @@ export function EthiopianDatePicker({
     if (showTime) {
       nextDate.setHours(hour24, minute, 0, 0);
     } else if (value) {
-      // Preserve the existing time when changing the date.
       nextDate.setHours(
         value.getHours(),
         value.getMinutes(),
@@ -474,15 +505,13 @@ export function EthiopianDatePicker({
     setSelected(nextDate);
     onChange?.(nextDate);
 
-    // With time enabled, keep the popover open so the time can be adjusted.
-    // The Done button closes it.
     if (!showTime) {
       setOpen(false);
     }
   };
 
   // ===================================================
-  // SELECT MONTH / YEAR FROM COMPACT PANELS
+  // SELECT MONTH / YEAR
   // ===================================================
 
   const handlePickMonth = (targetMonth: number) => {
@@ -508,13 +537,14 @@ export function EthiopianDatePicker({
   // TIME
   // ===================================================
 
-  /** Single place where time changes are stored and pushed to the parent. */
-  const applyTime = (nextHour: number, nextMinute: number) => {
+  const applyTime = (
+    nextHour: number,
+    nextMinute: number,
+  ) => {
     setHour24(nextHour);
     setMinute(nextMinute);
 
     if (!selected) {
-      // No date yet: the time is remembered and applied when a date is picked.
       return;
     }
 
@@ -529,7 +559,10 @@ export function EthiopianDatePicker({
   const displayHour = is12h ? hour24 % 12 || 12 : hour24;
 
   const commitHour = (display: number) => {
-    const next = is12h ? (display % 12) + (isPM ? 12 : 0) : display;
+    const next = is12h
+      ? (display % 12) + (isPM ? 12 : 0)
+      : display;
+
     applyTime(next, minute);
   };
 
@@ -541,21 +574,40 @@ export function EthiopianDatePicker({
     applyTime((hour24 % 12) + (pm ? 12 : 0), minute);
   };
 
-  /** Quick presets, plus "Now" rounded down to the minute step. */
   const timePresets = useMemo(() => {
     const now = new Date();
     const nowMinute = Math.floor(now.getMinutes() / step) * step;
 
     return [
-      { key: "now", label: "Now", h: now.getHours(), m: nowMinute },
-      { key: "morning", label: formatTime(9, 0, timeFormat), h: 9, m: 0 },
-      { key: "noon", label: formatTime(12, 0, timeFormat), h: 12, m: 0 },
-      { key: "evening", label: formatTime(17, 0, timeFormat), h: 17, m: 0 },
+      {
+        key: "now",
+        label: "Now",
+        h: now.getHours(),
+        m: nowMinute,
+      },
+      {
+        key: "morning",
+        label: formatTime(9, 0, timeFormat),
+        h: 9,
+        m: 0,
+      },
+      {
+        key: "noon",
+        label: formatTime(12, 0, timeFormat),
+        h: 12,
+        m: 0,
+      },
+      {
+        key: "evening",
+        label: formatTime(17, 0, timeFormat),
+        h: 17,
+        m: 0,
+      },
     ];
   }, [step, timeFormat]);
 
   // ===================================================
-  // YEAR OPTIONS (newest first so recent years are reached quickly)
+  // YEAR OPTIONS
   // ===================================================
 
   const yearOptions = useMemo(() => {
@@ -570,9 +622,15 @@ export function EthiopianDatePicker({
       { length: endYear - startYear + 1 },
       (_, index) => endYear - index,
     );
-  }, [isLimited, previousYear, currentYear, minYear, maxYear]);
+  }, [
+    isLimited,
+    previousYear,
+    currentYear,
+    minYear,
+    maxYear,
+  ]);
 
-  // Center the active year when the year panel opens.
+  // Synchronize the scroll position of the year list with the DOM.
   useEffect(() => {
     if (view !== "years") {
       return;
@@ -583,7 +641,9 @@ export function EthiopianDatePicker({
 
     if (list && active) {
       list.scrollTop =
-        active.offsetTop - list.clientHeight / 2 + active.clientHeight / 2;
+        active.offsetTop -
+        list.clientHeight / 2 +
+        active.clientHeight / 2;
     }
   }, [view]);
 
@@ -596,7 +656,9 @@ export function EthiopianDatePicker({
       return undefined;
     }
 
-    const dateLabel = formatEthiopianDate(selected.toDateString());
+    const dateLabel = formatEthiopianDate(
+      selected.toDateString(),
+    );
 
     if (!showTime) {
       return dateLabel;
@@ -622,8 +684,7 @@ export function EthiopianDatePicker({
     }
   };
 
-  // Escape inside the month/year panels returns to the calendar first.
-  const handleKeyDown = (event: React.KeyboardEvent) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape" && view !== "days") {
       event.preventDefault();
       event.stopPropagation();
@@ -631,8 +692,13 @@ export function EthiopianDatePicker({
     }
   };
 
-  const toggleView = (target: Exclude<PickerView, "days">) =>
-    setView((current) => (current === target ? "days" : target));
+  const toggleView = (
+    target: Exclude<PickerView, "days">,
+  ) => {
+    setView((current) =>
+      current === target ? "days" : target,
+    );
+  };
 
   // ===================================================
   // RENDER
@@ -641,10 +707,6 @@ export function EthiopianDatePicker({
   return (
     <div className="w-full min-w-0 space-y-1">
       <Popover open={open} onOpenChange={handleOpenChange}>
-        {/* =================================================
-            TRIGGER
-            ================================================= */}
-
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -673,10 +735,6 @@ export function EthiopianDatePicker({
           </Button>
         </PopoverTrigger>
 
-        {/* =================================================
-            POPOVER
-            ================================================= */}
-
         <PopoverContent
           align="center"
           side="bottom"
@@ -690,10 +748,7 @@ export function EthiopianDatePicker({
             "max-h-[min(80dvh,640px)]",
           )}
         >
-          {/* =================================================
-              FIXED SEARCH AND NAVIGATION
-              ================================================= */}
-
+          {/* Fixed search and navigation */}
           <div className="shrink-0 bg-popover p-3 sm:p-4">
             {searchable && view === "days" && (
               <Input
@@ -733,7 +788,10 @@ export function EthiopianDatePicker({
                     view === "months" && "bg-accent",
                   )}
                 >
-                  <span className="truncate">{ETH_MONTHS[month - 1]}</span>
+                  <span className="truncate">
+                    {ETH_MONTHS[month - 1]}
+                  </span>
+
                   <ChevronDownIcon
                     className={cn(
                       "h-3.5 w-3.5 shrink-0 opacity-60 transition-transform",
@@ -754,7 +812,10 @@ export function EthiopianDatePicker({
                     view === "years" && "bg-accent",
                   )}
                 >
-                  <span className="tabular-nums">{year} ዓ.ም</span>
+                  <span className="tabular-nums">
+                    {year} ዓ.ም
+                  </span>
+
                   <ChevronDownIcon
                     className={cn(
                       "h-3.5 w-3.5 shrink-0 opacity-60 transition-transform",
@@ -781,13 +842,9 @@ export function EthiopianDatePicker({
             </div>
           </div>
 
-          {/* =================================================
-              SCROLLABLE BODY
-              ================================================= */}
-
+          {/* Scrollable calendar body */}
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 sm:px-4 sm:pb-4">
-            {/* ---------------- MONTH PANEL ---------------- */}
-
+            {/* Month panel */}
             {view === "months" && (
               <div
                 className="grid grid-cols-3 gap-1.5"
@@ -827,8 +884,7 @@ export function EthiopianDatePicker({
               </div>
             )}
 
-            {/* ---------------- YEAR PANEL ---------------- */}
-
+            {/* Year panel */}
             {view === "years" && (
               <div
                 ref={yearListRef}
@@ -869,8 +925,7 @@ export function EthiopianDatePicker({
               </div>
             )}
 
-            {/* ---------------- DAYS PANEL ---------------- */}
-
+            {/* Days panel */}
             {view === "days" && (
               <>
                 <div className="grid w-full grid-cols-7 gap-1">
@@ -882,7 +937,10 @@ export function EthiopianDatePicker({
                         onClick={() => handleSelect(day.gregorian)}
                         disabled={!isMonthAllowed(day.year, day.month)}
                         aria-label={`${day.day} ${ETH_MONTHS[day.month - 1]} ${day.year}`}
-                        aria-pressed={isSameDay(selected, day.gregorian)}
+                        aria-pressed={isSameDay(
+                          selected,
+                          day.gregorian,
+                        )}
                         className={cn(
                           "aspect-square w-full min-w-0 rounded-md text-sm",
                           "transition-colors hover:bg-accent",
@@ -909,10 +967,7 @@ export function EthiopianDatePicker({
                   )}
                 </div>
 
-                {/* =============================================
-                    TIME
-                    ============================================= */}
-
+                {/* Time panel */}
                 {showTime && (
                   <div
                     className="mt-4 border-t pt-4"
@@ -922,7 +977,9 @@ export function EthiopianDatePicker({
                     <div className="mb-3 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Clock3 className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">Time</span>
+                        <span className="text-sm font-medium">
+                          Time
+                        </span>
                       </div>
 
                       <span
@@ -942,7 +999,9 @@ export function EthiopianDatePicker({
                         max={is12h ? 12 : 23}
                         disabled={disabled}
                         onCommit={commitHour}
-                        onFilled={() => minuteInputRef.current?.focus()}
+                        onFilled={() =>
+                          minuteInputRef.current?.focus()
+                        }
                       />
 
                       <span
@@ -961,7 +1020,9 @@ export function EthiopianDatePicker({
                         step={step}
                         disabled={disabled}
                         inputRef={minuteInputRef}
-                        onCommit={(next) => applyTime(hour24, next)}
+                        onCommit={(next) =>
+                          applyTime(hour24, next)
+                        }
                       />
 
                       {is12h && (
@@ -971,7 +1032,8 @@ export function EthiopianDatePicker({
                           className="flex h-10 shrink-0 overflow-hidden rounded-sm border"
                         >
                           {(["AM", "PM"] as const).map((period) => {
-                            const active = (period === "PM") === isPM;
+                            const active =
+                              (period === "PM") === isPM;
 
                             return (
                               <button
@@ -980,7 +1042,9 @@ export function EthiopianDatePicker({
                                 role="radio"
                                 aria-checked={active}
                                 disabled={disabled}
-                                onClick={() => setPeriod(period === "PM")}
+                                onClick={() =>
+                                  setPeriod(period === "PM")
+                                }
                                 className={cn(
                                   "w-10 text-xs font-medium transition-colors",
                                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
@@ -997,8 +1061,7 @@ export function EthiopianDatePicker({
                       )}
                     </div>
 
-                    {/* Quick presets */}
-
+                    {/* Quick time presets */}
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {timePresets.map((preset) => {
                         const active =
@@ -1011,7 +1074,9 @@ export function EthiopianDatePicker({
                             key={preset.key}
                             type="button"
                             disabled={disabled}
-                            onClick={() => applyTime(preset.h, preset.m)}
+                            onClick={() =>
+                              applyTime(preset.h, preset.m)
+                            }
                             aria-pressed={active}
                             className={cn(
                               "rounded-full border px-2.5 py-1 text-xs transition-colors",
@@ -1038,10 +1103,7 @@ export function EthiopianDatePicker({
             )}
           </div>
 
-          {/* =================================================
-              FOOTER (only when time is enabled)
-              ================================================= */}
-
+          {/* Footer when time selection is enabled */}
           {showTime && view === "days" && (
             <div className="shrink-0 border-t bg-popover p-3 sm:px-4">
               <Button
@@ -1056,10 +1118,6 @@ export function EthiopianDatePicker({
           )}
         </PopoverContent>
       </Popover>
-
-      {/* =================================================
-          ERROR
-          ================================================= */}
 
       {error && (
         <p className="text-xs text-destructive" role="alert">

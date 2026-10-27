@@ -540,13 +540,10 @@ function FiltersSheet({
   onApply: (draft: FilterDraft) => void
   onClearDate: () => void
 }) {
-  const [draft, setDraft] = useState<FilterDraft>(values)
-
-  // Start from the currently applied filters every time the sheet opens.
-  useEffect(() => {
-    if (open) setDraft(values)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  // The parent keys this component by its open/closed state, so the draft
+  // initializes from the currently applied values whenever the sheet opens.
+  // This avoids synchronously setting state inside an effect.
+  const [draft, setDraft] = useState<FilterDraft>(() => ({ ...values }))
 
   const isDirty =
     draft.sentiment !== values.sentiment ||
@@ -1133,6 +1130,7 @@ export function CommentsSection({
       </div>
 
       <FiltersSheet
+        key={filtersOpen ? "filters-open" : "filters-closed"}
         open={filtersOpen}
         onOpenChange={setFiltersOpen}
         values={appliedValues}

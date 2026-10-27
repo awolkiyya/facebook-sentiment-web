@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 const BLOOM_LEVELS = 4;
 const MAX_PULSES = 4;
@@ -478,33 +478,68 @@ const PrismaticBurst = ({
   const wakeRef = useRef<(() => void) | null>(null);
   const settingsRef = useRef<Settings>(null as unknown as Settings);
   const [generation, setGeneration] = useState(0);
-  settingsRef.current = {
-    colors: Array.isArray(colors) ? colors.slice(0, 64).map(String) : [],
-    intensity: Math.max(0, intensity),
-    speed,
-    animation: ANIMATIONS[animationType] ?? ANIMATIONS.rotate3d,
-    distort: Math.max(0, distort),
-    rayCount: Math.max(0, Math.floor(rayCount ?? 0)),
-    rayWidth: clamp(rayWidth, 0.2, 2.5),
-    zoom: Math.max(0.05, zoom),
-    twist,
-    flow,
-    centerFade: clamp(centerFade, 0.5, 3),
-    grain: clamp(grain, 0.3, 1),
-    glow: Math.max(0, glow),
-    offsetX: toPx(offset?.x),
-    offsetY: toPx(offset?.y),
-    mouseInteraction,
-    mouseStrength: Math.max(0, mouseStrength),
-    hoverDampness: clamp(hoverDampness, 0, 1),
-    clickBurst,
-    intro,
-    fade: clamp(fade, 0, 1),
-    scale: clamp(resolution ?? QUALITY[quality] ?? QUALITY.high, MIN_SCALE, 1),
-    lightMode,
-    paused,
-    dpr
-  };
+
+  const settings = useMemo<Settings>(
+    () => ({
+      colors: Array.isArray(colors) ? colors.slice(0, 64).map(String) : [],
+      intensity: Math.max(0, intensity),
+      speed,
+      animation: ANIMATIONS[animationType] ?? ANIMATIONS.rotate3d,
+      distort: Math.max(0, distort),
+      rayCount: Math.max(0, Math.floor(rayCount ?? 0)),
+      rayWidth: clamp(rayWidth, 0.2, 2.5),
+      zoom: Math.max(0.05, zoom),
+      twist,
+      flow,
+      centerFade: clamp(centerFade, 0.5, 3),
+      grain: clamp(grain, 0.3, 1),
+      glow: Math.max(0, glow),
+      offsetX: toPx(offset?.x),
+      offsetY: toPx(offset?.y),
+      mouseInteraction,
+      mouseStrength: Math.max(0, mouseStrength),
+      hoverDampness: clamp(hoverDampness, 0, 1),
+      clickBurst,
+      intro,
+      fade: clamp(fade, 0, 1),
+      scale: clamp(resolution ?? QUALITY[quality] ?? QUALITY.high, MIN_SCALE, 1),
+      lightMode,
+      paused,
+      dpr,
+    }),
+    [
+      colors,
+      intensity,
+      speed,
+      animationType,
+      distort,
+      rayCount,
+      rayWidth,
+      zoom,
+      twist,
+      flow,
+      centerFade,
+      grain,
+      glow,
+      offset?.x,
+      offset?.y,
+      mouseInteraction,
+      mouseStrength,
+      hoverDampness,
+      clickBurst,
+      intro,
+      fade,
+      resolution,
+      quality,
+      lightMode,
+      paused,
+      dpr,
+    ]
+  );
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   useEffect(() => {
     const container = containerRef.current;
