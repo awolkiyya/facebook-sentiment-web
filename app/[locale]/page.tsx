@@ -27,6 +27,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import Threads from "@/components/Threads";
+import Image from "next/image";
 
 /* =========================================================
    THEME HELPERS
@@ -122,24 +123,34 @@ export default function HomePage() {
       <header className="fixed inset-x-0 top-0 z-50 px-4 pt-3 sm:pt-4">
         <div className="mx-auto max-w-6xl">
           <div className="relative flex h-[62px] items-center justify-between rounded-2xl border border-border bg-card/90 px-3 shadow-sm shadow-foreground/[0.03] backdrop-blur-xl sm:px-5">
+        
             <Link
               href="/"
               aria-label="CivicPulse home"
               className="flex shrink-0 items-center gap-2.5"
             >
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-foreground text-background shadow-sm">
-                <Waves className="h-[18px] w-[18px]" />
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black shadow-sm">
+                <Image
+                  src="/icons/icon.png"
+                  alt="CivicPulse logo"
+                  width={40}
+                  height={40}
+                  priority
+                  className="h-10 w-10 object-contain"
+                />
               </span>
 
               <span className="leading-none">
                 <span className="block text-[15px] font-bold tracking-tight">
                   CivicPulse
                 </span>
+
                 <span className="mt-1.5 block text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                   Public voice intelligence
                 </span>
               </span>
             </Link>
+
 
             {/* Desktop navigation */}
 
@@ -282,22 +293,34 @@ export default function HomePage() {
       {/* FOOTER */}
 
      
+
 {/* FOOTER */}
 
 <footer className="border-t border-border bg-card">
   <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
     <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
       {/* Brand */}
-      <Link href="/" className="flex items-center gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground text-background">
-          <Waves className="h-4 w-4" />
+      <Link
+        href="/"
+        aria-label="CivicPulse home"
+        className="flex shrink-0 items-center gap-2.5"
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black shadow-sm">
+          <Image
+            src="/icons/icon.png"
+            alt="CivicPulse logo"
+            width={36}
+            height={36}
+            className="h-9 w-9 object-contain"
+          />
         </span>
 
-        <span>
+        <span className="leading-none">
           <span className="block text-sm font-bold tracking-tight">
             CivicPulse
           </span>
-          <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+
+          <span className="mt-1.5 block text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Public voice intelligence
           </span>
         </span>
@@ -309,13 +332,13 @@ export default function HomePage() {
         className="flex flex-wrap items-center gap-x-5 gap-y-3 text-xs text-muted-foreground"
       >
         {NAV_LINKS.map((link) => (
-          <a
+          <Link
             key={link.href}
             href={link.href}
-            className="transition hover:text-foreground"
+            className="transition-colors hover:text-[#0066FF]"
           >
             {link.label}
-          </a>
+          </Link>
         ))}
       </nav>
 
@@ -326,28 +349,28 @@ export default function HomePage() {
       >
         <Link
           href="/privacy-policy"
-          className="transition hover:text-foreground"
+          className="transition-colors hover:text-[#0066FF]"
         >
           Privacy Policy
         </Link>
 
         <Link
           href="/terms"
-          className="transition hover:text-foreground"
+          className="transition-colors hover:text-[#0066FF]"
         >
           Terms of Service
         </Link>
 
         <Link
           href="/data-deletion"
-          className="transition hover:text-foreground"
+          className="transition-colors hover:text-[#0066FF]"
         >
           Data Deletion
         </Link>
       </nav>
     </div>
 
-    {/* Footer description */}
+    {/* Footer description and copyright */}
     <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-xs leading-5 text-muted-foreground">
         Public-sector intelligence for better understanding.
@@ -359,6 +382,7 @@ export default function HomePage() {
     </div>
   </div>
 </footer>
+
 
     </main>
   );
