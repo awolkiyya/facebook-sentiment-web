@@ -129,7 +129,6 @@ export default function HomePage() {
               aria-label="CivicPulse home"
               className="flex shrink-0 items-center gap-2.5"
             >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black shadow-sm">
                 <Image
                   src="/icons/icon.png"
                   alt="CivicPulse logo"
@@ -138,7 +137,6 @@ export default function HomePage() {
                   priority
                   className="h-10 w-10 object-contain"
                 />
-              </span>
 
               <span className="leading-none">
                 <span className="block text-[15px] font-bold tracking-tight">
