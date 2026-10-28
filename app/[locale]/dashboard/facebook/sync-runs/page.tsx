@@ -2,16 +2,16 @@
 
 import {
   AlertTriangle,
-  CheckCircle2,
+  Check,
   ChevronLeft,
   ChevronRight,
-  Clock3,
+  Copy,
   ExternalLink,
   History,
   Loader2,
   MoreHorizontal,
   RefreshCw,
-  SlidersHorizontal,
+  Search,
   X,
   XCircle,
 } from "lucide-react"
@@ -20,7 +20,6 @@ import { useEffect, useMemo, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -81,7 +80,7 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 const ACTIVE_SYNC_STATUSES: readonly SyncStatus[] = ["queued", "running"]
 
 const STATUS_OPTIONS: { value: SyncStatus | "all"; label: string }[] = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All statuses" },
   { value: "completed", label: "Completed" },
   { value: "running", label: "Running" },
   { value: "queued", label: "Queued" },
@@ -90,22 +89,217 @@ const STATUS_OPTIONS: { value: SyncStatus | "all"; label: string }[] = [
 ]
 
 const TYPE_OPTIONS: { value: SyncType | "all"; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "full", label: "Full" },
+  { value: "all", label: "All types" },
+  { value: "full", label: "Full sync" },
   { value: "posts", label: "Posts" },
   { value: "comments", label: "Comments" },
   { value: "incremental", label: "Incremental" },
 ]
 
 const TRIGGER_OPTIONS: { value: SyncTrigger | "all"; label: string }[] = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All triggers" },
   { value: "manual", label: "Manual" },
   { value: "scheduler", label: "Scheduler" },
   { value: "system", label: "System" },
 ]
 
+const STATUS_STYLE: Record<
+  SyncStatus,
+  { label: string; dot: string; text: string }
+> = {
+  completed: {
+    label: "Completed",
+    dot: "bg-emerald-500",
+    text: "text-emerald-700 dark:text-emerald-400",
+  },
+  running: {
+    label: "Running",
+    dot: "bg-sky-500",
+    text: "text-sky-700 dark:text-sky-400",
+  },
+  queued: {
+    label: "Queued",
+    dot: "bg-amber-500",
+    text: "text-amber-700 dark:text-amber-400",
+  },
+  failed: {
+    label: "Failed",
+    dot: "bg-destructive",
+    text: "text-destructive",
+  },
+  cancelled: {
+    label: "Cancelled",
+    dot: "bg-muted-foreground/50",
+    text: "text-muted-foreground",
+  },
+}
+
 /* -------------------------------------------------------------------------- */
-/* Formatting helpers                                                         */
+/* Safe response access                                                       */
+/* -------------------------------------------------------------------------- */
+
+type UnknownRecord = Record<string, unknown>
+
+type PipelineProgress = {
+  expected: number
+  completed: number
+  failed: number
+  finished: number
+  progressPercent: number
+  startedAt?: string | null
+  completedAt?: string | null
+}
+
+type PipelineView = {
+  initialized: boolean
+  completed: boolean
+  initializedAt: string | null
+  completedAt: string | null
+  commentJobs: PipelineProgress
+  postAiJobs: PipelineProgress
+  commentAiJobs: PipelineProgress
+  overall: {
+    expected: number
+    completed: number
+    failed: number
+    finished: number
+    remaining: number
+    progressPercent: number
+    isFinished: boolean
+  }
+}
+
+function asRecord(value: unknown): UnknownRecord {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : {}
+}
+
+function firstValue(source: UnknownRecord, ...keys: string[]): unknown {
+  for (const key of keys) {
+    if (source[key] !== undefined && source[key] !== null) {
+      return source[key]
+    }
+  }
+
+  return undefined
+}
+
+function readNumber(source: UnknownRecord, ...keys: string[]): number {
+  const value = firstValue(source, ...keys)
+
+  if (typeof value === "number" && Number.isFinite(value)) return value
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+
+  return 0
+}
+
+function readBoolean(source: UnknownRecord, ...keys: string[]): boolean {
+  const value = firstValue(source, ...keys)
+  return value === true || value === 1 || value === "1"
+}
+
+function readString(source: UnknownRecord, ...keys: string[]): string | null {
+  const value = firstValue(source, ...keys)
+  return typeof value === "string" && value.trim() ? value : null
+}
+
+function resolvePercent(
+  source: UnknownRecord,
+  expected: number,
+  finished: number,
+): number {
+  const raw = firstValue(
+    source,
+    "progressPercent",
+    "progress_percent",
+    "progress_percentage",
+  )
+
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return Math.min(100, Math.max(0, raw))
+  }
+
+  return expected > 0
+    ? Math.min(100, Math.round((finished / expected) * 100))
+    : 0
+}
+
+function normalizeProgress(value: unknown): PipelineProgress {
+  const source = asRecord(value)
+
+  const expected = Math.max(0, readNumber(source, "expected"))
+  const completed = Math.max(0, readNumber(source, "completed"))
+  const failed = Math.max(0, readNumber(source, "failed"))
+  const finished = Math.max(0, readNumber(source, "finished", "total_finished"))
+
+  return {
+    expected,
+    completed,
+    failed,
+    finished,
+    progressPercent: resolvePercent(source, expected, finished),
+    startedAt: readString(source, "startedAt", "started_at"),
+    completedAt: readString(source, "completedAt", "completed_at"),
+  }
+}
+
+function normalizePipeline(value: unknown): PipelineView {
+  const source = asRecord(value)
+  const overallSource = asRecord(source.overall)
+
+  const commentJobs = normalizeProgress(
+    firstValue(source, "commentJobs", "comment_jobs"),
+  )
+  const postAiJobs = normalizeProgress(
+    firstValue(source, "postAiJobs", "post_ai_jobs"),
+  )
+  const commentAiJobs = normalizeProgress(
+    firstValue(source, "commentAiJobs", "comment_ai_jobs"),
+  )
+
+  const expected = Math.max(
+    0,
+    readNumber(overallSource, "expected") ||
+      commentJobs.expected + postAiJobs.expected + commentAiJobs.expected,
+  )
+
+  const completed = Math.max(0, readNumber(overallSource, "completed"))
+  const failed = Math.max(0, readNumber(overallSource, "failed"))
+  const finished = Math.max(
+    0,
+    readNumber(overallSource, "finished") || completed + failed,
+  )
+
+  return {
+    initialized: readBoolean(source, "initialized"),
+    completed: readBoolean(source, "completed"),
+    initializedAt: readString(source, "initializedAt", "initialized_at"),
+    completedAt: readString(source, "completedAt", "completed_at"),
+    commentJobs,
+    postAiJobs,
+    commentAiJobs,
+    overall: {
+      expected,
+      completed,
+      failed,
+      finished,
+      remaining: Math.max(
+        0,
+        readNumber(overallSource, "remaining") || expected - finished,
+      ),
+      progressPercent: resolvePercent(overallSource, expected, finished),
+      isFinished: readBoolean(overallSource, "isFinished", "is_finished"),
+    },
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Formatting                                                                 */
 /* -------------------------------------------------------------------------- */
 
 function formatNumber(value: number | null | undefined): string {
@@ -120,7 +314,7 @@ function formatDateTime(dateString: string | null | undefined): string {
 
   return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
-    timeStyle: "medium",
+    timeStyle: "short",
   }).format(date)
 }
 
@@ -130,43 +324,42 @@ function formatRelativeTime(
 ): string {
   if (!dateString) return "—"
 
-  const then = new Date(dateString).getTime()
-  if (Number.isNaN(then)) return dateString
+  const timestamp = new Date(dateString).getTime()
+  if (Number.isNaN(timestamp)) return dateString
 
-  // Clamp: small clock differences can produce future timestamps.
-  const diffSeconds = Math.max(0, Math.floor((now - then) / 1000))
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000))
+  if (seconds < 60) return "Just now"
 
-  if (diffSeconds < 60) return "just now"
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
 
-  const diffMinutes = Math.floor(diffSeconds / 60)
-  if (diffMinutes < 60) return `${diffMinutes}m ago`
-
-  const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) {
-    const rest = diffMinutes % 60
-    return rest > 0 ? `${diffHours}h ${rest}m ago` : `${diffHours}h ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) {
+    const remainingMinutes = minutes % 60
+    return remainingMinutes
+      ? `${hours}h ${remainingMinutes}m ago`
+      : `${hours}h ago`
   }
 
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
 
   return formatDateTime(dateString)
 }
 
 function formatSeconds(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds))
-  const hours = Math.floor(s / 3600)
-  const minutes = Math.floor((s % 3600) / 60)
-  const seconds = s % 60
+  const seconds = Math.max(0, Math.floor(totalSeconds))
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainder = seconds % 60
 
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
-  if (minutes > 0) return `${minutes}m ${seconds}s`
-  return `${seconds}s`
+  if (hours > 0) return `${hours}h ${minutes}m ${remainder}s`
+  if (minutes > 0) return `${minutes}m ${remainder}s`
+  return `${remainder}s`
 }
 
 function formatDuration(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined) return "—"
-  return formatSeconds(seconds)
+  return seconds == null ? "—" : formatSeconds(seconds)
 }
 
 function formatElapsed(
@@ -175,14 +368,14 @@ function formatElapsed(
 ): string {
   if (!startedAt) return "—"
 
-  const start = new Date(startedAt).getTime()
-  if (Number.isNaN(start)) return "—"
+  const timestamp = new Date(startedAt).getTime()
+  if (Number.isNaN(timestamp)) return "—"
 
-  return formatSeconds((now - start) / 1000)
+  return formatSeconds(Math.max(0, (now - timestamp) / 1000))
 }
 
 /* -------------------------------------------------------------------------- */
-/* Status helpers                                                             */
+/* Status and label helpers                                                   */
 /* -------------------------------------------------------------------------- */
 
 function isActiveStatus(status: SyncStatus): boolean {
@@ -193,92 +386,41 @@ function canRetry(status: SyncStatus): boolean {
   return status === "failed" || status === "cancelled"
 }
 
-function getStatusBadge(status: SyncStatus) {
-  switch (status) {
-    case "completed":
-      return (
-        <Badge variant="default" className="gap-1">
-          <CheckCircle2 className="h-3 w-3" />
-          Completed
-        </Badge>
-      )
-    case "running":
-      return (
-        <Badge variant="secondary" className="gap-1">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Running
-        </Badge>
-      )
-    case "failed":
-      return (
-        <Badge variant="destructive" className="gap-1">
-          <XCircle className="h-3 w-3" />
-          Failed
-        </Badge>
-      )
-    case "cancelled":
-      return (
-        <Badge variant="outline" className="gap-1">
-          <XCircle className="h-3 w-3" />
-          Cancelled
-        </Badge>
-      )
-    case "queued":
-      return (
-        <Badge variant="outline" className="gap-1">
-          <Clock3 className="h-3 w-3" />
-          Queued
-        </Badge>
-      )
-    default:
-      return null
-  }
-}
-
 function getTypeLabel(type: SyncType): string {
-  switch (type) {
-    case "full":
-      return "Full"
-    case "posts":
-      return "Posts"
-    case "comments":
-      return "Comments"
-    case "incremental":
-      return "Incremental"
-    default:
-      return type
+  const labels: Record<SyncType, string> = {
+    full: "Full sync",
+    posts: "Posts",
+    comments: "Comments",
+    incremental: "Incremental",
   }
+
+  return labels[type] ?? type
 }
 
 function getTriggerLabel(trigger: SyncTrigger): string {
-  switch (trigger) {
-    case "manual":
-      return "Manual"
-    case "scheduler":
-      return "Scheduler"
-    case "system":
-      return "System"
-    default:
-      return trigger
+  const labels: Record<SyncTrigger, string> = {
+    manual: "Manual",
+    scheduler: "Scheduler",
+    system: "System",
   }
+
+  return labels[trigger] ?? trigger
 }
 
 function getRunErrorMessage(run: FacebookSyncRun): string | null {
-  if (
-    typeof run.error_message === "string" &&
-    run.error_message.trim().length > 0
-  ) {
-    return run.error_message.trim()
-  }
-  return null
+  return typeof run.error_message === "string" && run.error_message.trim()
+    ? run.error_message.trim()
+    : null
 }
 
-type SafePipelineProgress = {
-  expected?: number | null
-  completed?: number | null
-  failed?: number | null
-  finished?: number | null
-  progressPercent?: number | null
+function durationLabel(run: FacebookSyncRun, now: number): string {
+  if (run.status === "running" && run.started_at) {
+    return formatElapsed(run.started_at, now)
+  }
+
+  if (run.status === "queued") return "Waiting"
+
+  return formatDuration(run.duration_seconds)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -286,24 +428,16 @@ type SafePipelineProgress = {
 /* -------------------------------------------------------------------------- */
 
 export default function FacebookSyncRunsPage() {
-  /* Filters */
   const [statusFilter, setStatusFilter] = useState<SyncStatus | "all">("all")
   const [typeFilter, setTypeFilter] = useState<SyncType | "all">("all")
   const [triggerFilter, setTriggerFilter] = useState<SyncTrigger | "all">(
     "all",
   )
-  const [filtersOpen, setFiltersOpen] = useState(false)
-
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
-
-  /* Selected run */
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
 
-  /* Browser clock (only for elapsed labels) */
-  const [now, setNow] = useState<number>(() => Date.now())
-
-  /* List query */
   const listFilters = useMemo(
     () => ({
       status: statusFilter,
@@ -328,14 +462,11 @@ export default function FacebookSyncRunsPage() {
   const cancelMutation = useCancelFacebookSyncRun()
 
   const runs: FacebookSyncRun[] = runsResponse?.data ?? []
-
-  /* Pagination */
   const pagination = runsResponse?.meta?.pagination
   const totalRuns = pagination?.total ?? 0
   const currentPage = pagination?.current_page ?? page
   const totalPages = Math.max(1, pagination?.last_page ?? 1)
 
-  /* Detail query */
   const {
     data: selectedRun,
     isLoading: isLoadingDetail,
@@ -345,42 +476,9 @@ export default function FacebookSyncRunsPage() {
     refetch: refetchDetail,
   } = useFacebookSyncRun(selectedRunId)
 
-  /* Live status */
   const hasActiveRun = runs.some((run) => isActiveStatus(run.status))
   const selectedRunIsActive =
     selectedRun != null && isActiveStatus(selectedRun.status)
-
-    useEffect(() => {
-      if (!hasActiveRun && !selectedRunIsActive) return
-    
-      const intervalId = window.setInterval(() => {
-        setNow(Date.now())
-      }, 1000)
-    
-      return () => window.clearInterval(intervalId)
-    }, [hasActiveRun, selectedRunIsActive])
-
-  /* Keep pagination valid */
-  // useEffect(() => {
-  //   if (runsResponse && page > totalPages) {
-  //     setPage(totalPages)
-  //   }
-  // }, [page, totalPages, runsResponse])
-
-  /* Keep pagination valid */
-  // setPage(Math.min(page, totalPages))
-// const currentPage = Math.min(page, totalPages)
-
-  /* Derived */
-  const failedCount = runs.filter((run) => run.status === "failed").length
-  const runningCount = runs.filter((run) => run.status === "running").length
-  const completedCount = runs.filter(
-    (run) => run.status === "completed",
-  ).length
-  const totalPosts = runs.reduce(
-    (sum, run) => sum + (run.statistics?.posts_fetched ?? 0),
-    0,
-  )
 
   const activeFilterCount =
     Number(statusFilter !== "all") +
@@ -389,7 +487,20 @@ export default function FacebookSyncRunsPage() {
 
   const hasActiveFilters = activeFilterCount > 0
 
-  /* Mutation state */
+  const failedCount = runs.filter((run) => run.status === "failed").length
+  const runningCount = runs.filter((run) => run.status === "running").length
+  const completedCount = runs.filter((run) => run.status === "completed").length
+  const queuedCount = runs.filter((run) => run.status === "queued").length
+
+  const totalPosts = runs.reduce(
+    (sum, run) => sum + (run.statistics?.posts_fetched ?? 0),
+    0,
+  )
+  const totalComments = runs.reduce(
+    (sum, run) => sum + (run.statistics?.comments_fetched ?? 0),
+    0,
+  )
+
   const retryingRunId = retryMutation.isPending
     ? (retryMutation.variables ?? null)
     : null
@@ -404,60 +515,85 @@ export default function FacebookSyncRunsPage() {
     retryMutation.error instanceof Error
       ? retryMutation.error.message
       : retryMutation.error
-        ? "Unable to retry the synchronization run."
+        ? "Unable to retry this synchronization run."
         : null
 
   const cancelErrorMessage =
     cancelMutation.error instanceof Error
       ? cancelMutation.error.message
       : cancelMutation.error
-        ? "Unable to cancel the synchronization run."
+        ? "Unable to cancel this synchronization run."
         : null
 
-  /* Handlers */
-  function clearFilters(): void {
+  const selectedPipeline = useMemo(
+    () => normalizePipeline(selectedRun?.pipeline),
+    [selectedRun],
+  )
+
+  useEffect(() => {
+    if (!hasActiveRun && !selectedRunIsActive) return
+
+    const intervalId = window.setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+
+    return () => window.clearInterval(intervalId)
+  }, [hasActiveRun, selectedRunIsActive])
+
+  // Correct the requested page if a filter change or deletion reduces totals.
+  useEffect(() => {
+    if (!runsResponse || isFetching) return
+
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [runsResponse, isFetching, page, totalPages])
+
+  function clearFilters() {
     setStatusFilter("all")
     setTypeFilter("all")
     setTriggerFilter("all")
     setPage(1)
   }
 
-  function applyStatus(value: SyncStatus | "all"): void {
+  function applyStatus(value: SyncStatus | "all") {
     setStatusFilter(value)
     setPage(1)
   }
 
-  function applyType(value: SyncType | "all"): void {
+  function applyType(value: SyncType | "all") {
     setTypeFilter(value)
     setPage(1)
   }
 
-  function applyTrigger(value: SyncTrigger | "all"): void {
+  function applyTrigger(value: SyncTrigger | "all") {
     setTriggerFilter(value)
     setPage(1)
   }
 
-  function handlePageSizeChange(value: string): void {
+  function handlePageSizeChange(value: string) {
     const next = Number(value)
-    if (!Number.isInteger(next) || next <= 0) return
+
+    if (!PAGE_SIZE_OPTIONS.some((option) => option === next)) return
 
     setPageSize(next)
     setPage(1)
   }
 
-  async function handleRefresh(): Promise<void> {
+  async function handleRefresh() {
     await refetch()
-    if (selectedRunId !== null) {
+
+    if (selectedRunId) {
       await refetchDetail()
     }
   }
 
-  function resetMutationErrors(): void {
+  function resetMutationErrors() {
     if (retryMutation.isError) retryMutation.reset()
     if (cancelMutation.isError) cancelMutation.reset()
   }
 
-  function openRun(runId: string): void {
+  function openRun(runId: string) {
     const id = runId.trim()
     if (!id) return
 
@@ -465,292 +601,254 @@ export default function FacebookSyncRunsPage() {
     setSelectedRunId(id)
   }
 
-  function closeRun(): void {
+  function closeRun() {
     setSelectedRunId(null)
     resetMutationErrors()
   }
 
-  function handleRetry(runId: string): void {
+  function handleRetry(runId: string) {
     const id = runId.trim()
     if (!id || isBusy) return
 
     const currentRun = runs.find((run) => run.id === id)
+
     if (currentRun && !canRetry(currentRun.status)) return
 
     retryMutation.reset()
+
     retryMutation.mutate(id, {
       onSuccess: (retriedRun) => {
         setSelectedRunId(retriedRun.id)
+        void refetch()
       },
     })
   }
 
-  function handleCancel(runId: string): void {
+  function handleCancel(runId: string) {
     const id = runId.trim()
     if (!id || isBusy) return
 
-    // Frontend guard only. The backend remains the final authority.
     const currentRun = runs.find((run) => run.id === id)
+
     if (currentRun && !isActiveStatus(currentRun.status)) return
 
     const confirmed = window.confirm(
-      "Cancel this synchronization run?\n\nThe run will be marked as cancelled and will not continue processing new work.",
+      "Cancel this synchronization run?\n\nThe server will determine whether the run can be cancelled.",
     )
+
     if (!confirmed) return
 
     cancelMutation.reset()
+
     cancelMutation.mutate(id, {
       onSuccess: (cancelledRun) => {
-        // Keep the run open so the final state is visible immediately.
         if (cancelledRun?.id) {
           setSelectedRunId(cancelledRun.id)
         }
+
+        void refetch()
       },
     })
   }
 
-  /* ------------------------------------------------------------------------ */
-  /* Render                                                                   */
-  /* ------------------------------------------------------------------------ */
-
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="mx-auto max-w-7xl space-y-6 p-6">
+      <div className="mx-auto w-full max-w-[1500px] space-y-5 p-4 sm:p-6 lg:px-8 lg:py-8">
         {/* Header */}
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                Sync runs
-              </h1>
-
-              {hasActiveRun && (
-                <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  </span>
-                  Live
-                </span>
-              )}
+        <header className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1877F2] text-white">
+              <FaFacebookF className="h-5 w-5" />
             </div>
 
-            <p className="text-sm text-muted-foreground">
-              Track Facebook syncs, their progress, and what they imported.
-            </p>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                  Facebook sync runs
+                </h1>
+
+                {hasActiveRun && (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-emerald-600/30 text-emerald-700 dark:text-emerald-400"
+                  >
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-50" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                    </span>
+                    Live
+                  </Badge>
+                )}
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                Track imports from your Facebook pages and the AI analysis that
+                follows.
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setFiltersOpen(true)}
-              className="gap-2"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              Filters
-              {activeFilterCount > 0 && (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground">
-                  {activeFilterCount}
-                </span>
-              )}
-            </Button>
-
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => void handleRefresh()}
-              disabled={isFetching}
-              aria-label="Refresh"
-            >
-              <RefreshCw
-                className={isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"}
-              />
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleRefresh()}
+            disabled={isFetching}
+            className="shrink-0 gap-2"
+          >
+            <RefreshCw
+              className={isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"}
+            />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
         </header>
 
-        {/* List error */}
+        {/* List request error */}
         {isError && (
-          <Card className="border-destructive/30">
-            <CardContent className="flex items-start gap-3 p-4">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
-
-              <div className="space-y-1">
-                <p className="font-medium text-destructive">
-                  Couldn’t load sync runs
-                </p>
-
-                <p className="text-sm text-muted-foreground">
-                  {error instanceof Error
-                    ? error.message
-                    : "An unexpected error occurred."}
-                </p>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleRefresh()}
-                  className="mt-2"
-                >
-                  Try again
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <InlineError
+            title="Unable to load sync runs"
+            message={
+              error instanceof Error
+                ? error.message
+                : "An unexpected error occurred while loading synchronization history."
+            }
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleRefresh()}
+                disabled={isFetching}
+              >
+                Try again
+              </Button>
+            }
+          />
         )}
 
-        {/* Summary */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryTile
-            label="Total runs"
+        {/* Summary strip: one surface, four cells */}
+        <section
+          aria-label="Synchronization summary"
+          className="grid grid-cols-2 overflow-hidden rounded-xl border bg-card lg:grid-cols-4"
+        >
+          <StatCell
+            label="Matching runs"
             value={formatNumber(totalRuns)}
-            hint="Matching filters"
+            note={`${formatNumber(totalPosts)} posts, ${formatNumber(totalComments)} comments on this page`}
             onClick={clearFilters}
+            className="border-b lg:border-b-0"
           />
-          <SummaryTile
+          <StatCell
             label="Completed"
             value={formatNumber(completedCount)}
-            hint="On this page"
+            dot="bg-emerald-500"
+            note="On this page"
             onClick={() => applyStatus("completed")}
+            className="border-b border-l lg:border-b-0"
           />
-          <SummaryTile
-            label="Running"
-            value={formatNumber(runningCount)}
-            hint="On this page"
+          <StatCell
+            label="In progress"
+            value={formatNumber(runningCount + queuedCount)}
+            dot="bg-sky-500"
+            note={`${formatNumber(runningCount)} running, ${formatNumber(queuedCount)} queued`}
             onClick={() => applyStatus("running")}
+            className="lg:border-l"
           />
-          <SummaryTile
+          <StatCell
             label="Failed"
             value={formatNumber(failedCount)}
-            hint="On this page"
-            tone={failedCount > 0 ? "danger" : "default"}
+            dot="bg-destructive"
+            danger={failedCount > 0}
+            note="On this page"
             onClick={() => applyStatus("failed")}
+            className="border-l"
           />
-        </div>
+        </section>
 
-        {/* Table card */}
-        <Card className="overflow-hidden py-0">
-          {/* Toolbar */}
-          <div className="flex flex-col gap-2 border-b px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">
-                  {formatNumber(totalRuns)}
-                </span>{" "}
-                {totalRuns === 1 ? "run" : "runs"} ·{" "}
-                {formatNumber(totalPosts)} posts fetched on this page
-              </p>
+        {/* Toolbar: filters live inline instead of in a sheet */}
+        <section
+          aria-label="Filters"
+          className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
+        >
+          <FilterSelect
+            ariaLabel="Filter by status"
+            value={statusFilter}
+            options={STATUS_OPTIONS}
+            onChange={applyStatus}
+          />
+          <FilterSelect
+            ariaLabel="Filter by sync type"
+            value={typeFilter}
+            options={TYPE_OPTIONS}
+            onChange={applyType}
+          />
+          <FilterSelect
+            ariaLabel="Filter by trigger"
+            value={triggerFilter}
+            options={TRIGGER_OPTIONS}
+            onChange={applyTrigger}
+          />
 
-              {hasActiveFilters && (
-                <>
-                  <Separator orientation="vertical" className="mx-1 h-4" />
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="h-9 gap-1.5 px-2 text-muted-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+              Clear {activeFilterCount === 1 ? "filter" : "filters"}
+            </Button>
+          )}
+        </section>
 
-                  {statusFilter !== "all" && (
-                    <FilterChip
-                      label={getLabel(STATUS_OPTIONS, statusFilter)}
-                      onRemove={() => applyStatus("all")}
-                    />
-                  )}
-                  {typeFilter !== "all" && (
-                    <FilterChip
-                      label={`${getLabel(TYPE_OPTIONS, typeFilter)} type`}
-                      onRemove={() => applyType("all")}
-                    />
-                  )}
-                  {triggerFilter !== "all" && (
-                    <FilterChip
-                      label={getLabel(TRIGGER_OPTIONS, triggerFilter)}
-                      onRemove={() => applyTrigger("all")}
-                    />
-                  )}
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="h-7 px-2 text-muted-foreground"
-                  >
-                    Clear all
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
+        {/* Runs */}
+        <section className="overflow-hidden rounded-xl border bg-card">
+          {/* Desktop table */}
+          <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="pl-6">Page</TableHead>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead className="pl-5">Page</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Started</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead className="text-right">Posts</TableHead>
                   <TableHead className="text-right">Comments</TableHead>
-                  <TableHead className="text-right">
+                  <TableHead className="w-44">
                     <Tooltip>
-                      <TooltipTrigger className="cursor-default">
-                        AI
+                      <TooltipTrigger className="cursor-help">
+                        AI analysis
                       </TooltipTrigger>
                       <TooltipContent>
-                        AI analysis jobs completed and failed
+                        Completed and failed AI analysis jobs
                       </TooltipContent>
                     </Tooltip>
                   </TableHead>
-                  <TableHead className="w-10 pr-6" />
+                  <TableHead className="w-12 pr-4" />
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {isLoading ? (
-                  Array.from({ length: 5 }).map((_, index) => (
-                    <TableRow key={`sync-run-skeleton-${index}`}>
-                      <TableCell colSpan={8} className="h-16 px-6">
-                        <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                  Array.from({ length: 6 }).map((_, index) => (
+                    <TableRow key={`sync-skeleton-${index}`}>
+                      <TableCell colSpan={8} className="px-5 py-4">
+                        <div className="h-5 animate-pulse rounded bg-muted" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : runs.length === 0 ? (
                   <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={8} className="h-48 text-center">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <History className="h-8 w-8 text-muted-foreground/50" />
-
-                        <p className="text-sm text-muted-foreground">
-                          {hasActiveFilters
-                            ? "No runs match these filters."
-                            : "No sync runs yet."}
-                        </p>
-
-                        {hasActiveFilters && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={clearFilters}
-                            className="gap-1.5"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            Clear filters
-                          </Button>
-                        )}
-                      </div>
+                    <TableCell colSpan={8} className="h-60 text-center">
+                      <EmptyState
+                        filtered={hasActiveFilters}
+                        onClear={clearFilters}
+                      />
                     </TableCell>
                   </TableRow>
                 ) : (
                   runs.map((run) => {
                     const errorMessage = getRunErrorMessage(run)
-                    const stats = run.statistics
-
-                    const postsFetched = stats?.posts_fetched ?? 0
-                    const commentsFetched = stats?.comments_fetched ?? 0
-                    const aiCompleted = stats?.ai_completed ?? 0
-                    const aiFailed = stats?.ai_failed ?? 0
-
                     const startedOrQueuedAt = run.started_at ?? run.queued_at
-                    const isRunning = run.status === "running"
-                    const isActive = isActiveStatus(run.status)
-                    const isRetrying = retryingRunId === run.id
-                    const isCancelling = cancellingRunId === run.id
 
                     return (
                       <TableRow
@@ -758,43 +856,30 @@ export default function FacebookSyncRunsPage() {
                         className="cursor-pointer"
                         onClick={() => openRun(run.id)}
                       >
-                        {/* Page */}
-                        <TableCell className="pl-6">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1877F2]/10 text-[#1877F2]">
-                              <FaFacebookF className="h-3.5 w-3.5" />
-                            </div>
-
-                            <div className="min-w-0">
-                              <p className="max-w-48 truncate font-medium">
-                                {run.page?.name ?? "Unknown Facebook Page"}
-                              </p>
-
-                              <p className="text-xs text-muted-foreground">
-                                {getTypeLabel(run.type)} ·{" "}
-                                {getTriggerLabel(run.trigger)}
-                              </p>
-                            </div>
+                        <TableCell className="pl-5">
+                          <div className="min-w-[180px]">
+                            <p className="max-w-56 truncate font-medium">
+                              {run.page?.name ?? "Unknown Facebook page"}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {getTypeLabel(run.type)} by{" "}
+                              {getTriggerLabel(run.trigger).toLowerCase()}
+                            </p>
                           </div>
                         </TableCell>
 
-                        {/* Status */}
                         <TableCell>
                           <div className="flex flex-col items-start gap-1">
-                            {getStatusBadge(run.status)}
+                            <StatusPill status={run.status} />
 
                             {run.status === "failed" && errorMessage && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="flex max-w-56 items-center gap-1 text-xs text-destructive">
-                                    <AlertTriangle className="h-3 w-3 shrink-0" />
-                                    <span className="truncate">
-                                      {errorMessage}
-                                    </span>
+                                  <span className="max-w-48 truncate text-xs text-destructive">
+                                    {errorMessage}
                                   </span>
                                 </TooltipTrigger>
-
-                                <TooltipContent className="max-w-xs break-words font-mono text-xs">
+                                <TooltipContent className="max-w-sm break-words">
                                   {errorMessage}
                                 </TooltipContent>
                               </Tooltip>
@@ -802,111 +887,62 @@ export default function FacebookSyncRunsPage() {
                           </div>
                         </TableCell>
 
-                        {/* Started */}
                         <TableCell>
-                          <div className="whitespace-nowrap">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <p className="text-sm">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="min-w-28">
+                                <p className="whitespace-nowrap text-sm">
                                   {formatRelativeTime(startedOrQueuedAt, now)}
                                 </p>
-                              </TooltipTrigger>
-
-                              <TooltipContent>
-                                {formatDateTime(startedOrQueuedAt)}
-                              </TooltipContent>
-                            </Tooltip>
-
-                            <p className="text-xs text-muted-foreground">
-                              {run.triggered_by?.name ?? "System"}
-                            </p>
-                          </div>
+                                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                  {run.triggered_by?.name ?? "System"}
+                                </p>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {formatDateTime(startedOrQueuedAt)}
+                            </TooltipContent>
+                          </Tooltip>
                         </TableCell>
 
-                        {/* Duration */}
-                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                          {isRunning && run.started_at
-                            ? formatElapsed(run.started_at, now)
-                            : run.status === "queued"
-                              ? "Queued"
-                              : formatDuration(run.duration_seconds)}
+                        <TableCell className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">
+                          {durationLabel(run, now)}
                         </TableCell>
 
-                        {/* Posts */}
-                        <TableCell className="text-right">
-                          <p className="font-medium">
-                            {formatNumber(postsFetched)}
-                          </p>
+                        <TableCell className="text-right text-sm font-medium tabular-nums">
+                          {formatNumber(run.statistics?.posts_fetched)}
                         </TableCell>
 
-                        {/* Comments */}
-                        <TableCell className="text-right">
-                          <p className="font-medium">
-                            {formatNumber(commentsFetched)}
-                          </p>
+                        <TableCell className="text-right text-sm font-medium tabular-nums">
+                          {formatNumber(run.statistics?.comments_fetched)}
                         </TableCell>
 
-                        {/* AI */}
-                        <TableCell className="text-right">
-                          <p className="font-medium">
-                            {formatNumber(aiCompleted)}
-                          </p>
-
-                          {aiFailed > 0 && (
-                            <p className="text-xs text-destructive">
-                              {formatNumber(aiFailed)} failed
-                            </p>
-                          )}
+                        <TableCell>
+                          <AiMiniProgress
+                            completed={run.statistics?.ai_completed ?? 0}
+                            failed={run.statistics?.ai_failed ?? 0}
+                            queued={
+                              (run.statistics?.posts_queued_for_ai ?? 0) +
+                              (run.statistics?.comments_queued_for_ai ?? 0)
+                            }
+                          />
                         </TableCell>
 
-                        {/* Actions */}
                         <TableCell
-                          className="pr-6"
+                          className="pr-4"
                           onClick={(event) => event.stopPropagation()}
                         >
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                disabled={isRetrying || isCancelling}
-                              >
-                                {isRetrying || isCancelling ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <MoreHorizontal className="h-4 w-4" />
-                                )}
-                                <span className="sr-only">Open actions</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openRun(run.id)}>
-                                View details
-                              </DropdownMenuItem>
-
-                              {isActive && (
-                                <DropdownMenuItem
-                                  disabled={isBusy}
-                                  onClick={() => handleCancel(run.id)}
-                                >
-                                  <XCircle className="mr-2 h-4 w-4" />
-                                  Cancel
-                                </DropdownMenuItem>
-                              )}
-
-                              {canRetry(run.status) && (
-                                <DropdownMenuItem
-                                  disabled={isBusy}
-                                  onClick={() => handleRetry(run.id)}
-                                >
-                                  <RefreshCw className="mr-2 h-4 w-4" />
-                                  Retry
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <RunActions
+                            run={run}
+                            busy={isBusy}
+                            pending={
+                              retryingRunId === run.id ||
+                              cancellingRunId === run.id
+                            }
+                            onView={openRun}
+                            onRetry={handleRetry}
+                            onCancel={handleCancel}
+                          />
                         </TableCell>
                       </TableRow>
                     )
@@ -916,146 +952,198 @@ export default function FacebookSyncRunsPage() {
             </Table>
           </div>
 
+          {/* Mobile list */}
+          <div className="divide-y md:hidden">
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, index) => (
+                <div key={`sync-card-skeleton-${index}`} className="p-4">
+                  <div className="h-14 animate-pulse rounded bg-muted" />
+                </div>
+              ))
+            ) : runs.length === 0 ? (
+              <div className="py-12">
+                <EmptyState filtered={hasActiveFilters} onClear={clearFilters} />
+              </div>
+            ) : (
+              runs.map((run) => {
+                const startedOrQueuedAt = run.started_at ?? run.queued_at
+                const errorMessage = getRunErrorMessage(run)
+
+                return (
+                  <div
+                    key={run.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openRun(run.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault()
+                        openRun(run.id)
+                      }
+                    }}
+                    className="space-y-3 p-4 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">
+                          {run.page?.name ?? "Unknown Facebook page"}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {getTypeLabel(run.type)} by{" "}
+                          {getTriggerLabel(run.trigger).toLowerCase()},{" "}
+                          {formatRelativeTime(startedOrQueuedAt, now)}
+                        </p>
+                      </div>
+
+                      <div
+                        className="flex shrink-0 items-center gap-1"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <StatusPill status={run.status} />
+                        <RunActions
+                          run={run}
+                          busy={isBusy}
+                          pending={
+                            retryingRunId === run.id ||
+                            cancellingRunId === run.id
+                          }
+                          onView={openRun}
+                          onRetry={handleRetry}
+                          onCancel={handleCancel}
+                        />
+                      </div>
+                    </div>
+
+                    {run.status === "failed" && errorMessage && (
+                      <p className="line-clamp-2 text-xs text-destructive">
+                        {errorMessage}
+                      </p>
+                    )}
+
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Posts</p>
+                        <p className="font-medium tabular-nums">
+                          {formatNumber(run.statistics?.posts_fetched)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">
+                          Comments
+                        </p>
+                        <p className="font-medium tabular-nums">
+                          {formatNumber(run.statistics?.comments_fetched)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">
+                          Duration
+                        </p>
+                        <p className="font-medium tabular-nums">
+                          {durationLabel(run, now)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
           {/* Pagination */}
           {totalRuns > 0 && (
-            <div className="flex flex-col gap-3 border-t px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <Select
-                value={String(pageSize)}
-                onValueChange={handlePageSizeChange}
-              >
-                <SelectTrigger className="h-8 w-[110px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-
-                <SelectContent>
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <SelectItem key={size} value={String(size)}>
-                      {size} / page
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
+            <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">
-                  Page {currentPage} of {totalPages}
+                  Rows per page
                 </span>
 
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={currentPage <= 1 || isFetching}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={handlePageSizeChange}
                 >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="sr-only">Previous page</span>
-                </Button>
+                  <SelectTrigger className="h-8 w-[76px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <SelectItem key={size} value={String(size)}>
+                        {size}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={currentPage >= totalPages || isFetching}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                  <span className="sr-only">Next page</span>
-                </Button>
+              <div className="flex items-center justify-between gap-3 sm:justify-end">
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  {pagination?.from ?? 0} to {pagination?.to ?? 0} of{" "}
+                  {formatNumber(totalRuns)}
+                </p>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Previous page"
+                    disabled={currentPage <= 1 || isFetching}
+                    onClick={() =>
+                      setPage((previous) => Math.max(1, previous - 1))
+                    }
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+
+                  <span className="min-w-20 text-center text-xs text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </span>
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Next page"
+                    disabled={currentPage >= totalPages || isFetching}
+                    onClick={() =>
+                      setPage((previous) => Math.min(totalPages, previous + 1))
+                    }
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           )}
-        </Card>
+        </section>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* Filters sheet                                                      */}
-        {/* ------------------------------------------------------------------ */}
-
-        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-          <SheetContent className="flex w-full flex-col gap-0 sm:max-w-sm">
-            <SheetHeader>
-              <SheetTitle>Filters</SheetTitle>
-              <SheetDescription>
-                Narrow the list by status, type, or trigger. Changes apply
-                right away.
-              </SheetDescription>
-            </SheetHeader>
-
-            <div className="flex-1 space-y-6 overflow-y-auto px-4 py-2">
-              <FilterGroup
-                title="Status"
-                options={STATUS_OPTIONS}
-                value={statusFilter}
-                onChange={applyStatus}
-              />
-
-              <Separator />
-
-              <FilterGroup
-                title="Type"
-                options={TYPE_OPTIONS}
-                value={typeFilter}
-                onChange={applyType}
-              />
-
-              <Separator />
-
-              <FilterGroup
-                title="Trigger"
-                options={TRIGGER_OPTIONS}
-                value={triggerFilter}
-                onChange={applyTrigger}
-              />
-            </div>
-
-            <SheetFooter className="gap-2 border-t">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={clearFilters}
-                disabled={!hasActiveFilters}
-              >
-                Reset
-              </Button>
-
-              <Button className="w-full" onClick={() => setFiltersOpen(false)}>
-                Show {formatNumber(totalRuns)}{" "}
-                {totalRuns === 1 ? "run" : "runs"}
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
-
-        {/* ------------------------------------------------------------------ */}
-        {/* Detail sheet                                                       */}
-        {/* ------------------------------------------------------------------ */}
-
+        {/* Run details */}
         <Sheet
           open={selectedRunId !== null}
-          onOpenChange={(open: boolean) => {
+          onOpenChange={(open) => {
             if (!open) closeRun()
           }}
         >
-          <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+          <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-xl">
             {isLoadingDetail ? (
               <>
-                <SheetHeader>
-                  <SheetTitle>Sync run</SheetTitle>
-                  <SheetDescription>Loading details…</SheetDescription>
+                <SheetHeader className="border-b">
+                  <SheetTitle>Run details</SheetTitle>
+                  <SheetDescription>Loading run information…</SheetDescription>
                 </SheetHeader>
 
                 <div className="space-y-4 px-4 py-6">
-                  <div className="h-20 animate-pulse rounded-lg bg-muted" />
-                  <div className="h-24 animate-pulse rounded-lg bg-muted" />
-                  <div className="h-32 animate-pulse rounded-lg bg-muted" />
+                  <div className="h-20 animate-pulse rounded-xl bg-muted" />
+                  <div className="h-28 animate-pulse rounded-xl bg-muted" />
+                  <div className="h-36 animate-pulse rounded-xl bg-muted" />
                 </div>
               </>
             ) : isDetailError ? (
               <>
-                <SheetHeader>
-                  <SheetTitle>Couldn’t load run</SheetTitle>
+                <SheetHeader className="border-b pb-4">
+                  <SheetTitle>Unable to load run</SheetTitle>
                   <SheetDescription>
-                    The details for this run could not be loaded.
+                    The server could not return the details for this run.
                   </SheetDescription>
                 </SheetHeader>
 
@@ -1088,48 +1176,64 @@ export default function FacebookSyncRunsPage() {
               </>
             ) : selectedRun ? (
               <>
-                <SheetHeader>
-                  <SheetTitle className="flex items-center gap-2">
-                    {getStatusBadge(selectedRun.status)}
-
-                    <span className="truncate font-mono text-sm text-muted-foreground">
-                      {selectedRun.id}
-                    </span>
-                  </SheetTitle>
-
-                  <SheetDescription>
-                    {getTypeLabel(selectedRun.type)} sync ·{" "}
-                    {getTriggerLabel(selectedRun.trigger)} ·{" "}
-                    {selectedRun.triggered_by?.name ?? "System"}
-                  </SheetDescription>
-                </SheetHeader>
-
-                <div className="space-y-6 px-4 pb-6">
-                  {/* Active */}
-                  {selectedRun.is_active && (
-                    <div className="rounded-lg bg-muted/40 p-4">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-sm font-medium">
-                          Sync in progress
-                        </span>
+                <SheetHeader className="border-b pb-4">
+                  <div className="flex items-start justify-between gap-3 pr-8">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1877F2] text-white">
+                        <FaFacebookF className="h-5 w-5" />
                       </div>
 
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {selectedRun.started_at
-                          ? `Running for ${formatElapsed(selectedRun.started_at, now)}`
-                          : "Waiting for the queue worker to start this job."}
-                      </p>
-
-                      {isFetchingDetail && (
-                        <p className="mt-2 text-[11px] text-muted-foreground">
-                          Updating status…
-                        </p>
-                      )}
+                      <div className="min-w-0">
+                        <SheetTitle className="truncate text-left">
+                          {selectedRun.page?.name ?? "Unknown Facebook page"}
+                        </SheetTitle>
+                        <SheetDescription className="text-left">
+                          {getTypeLabel(selectedRun.type)} by{" "}
+                          {getTriggerLabel(selectedRun.trigger).toLowerCase()}
+                          {", started by "}
+                          {selectedRun.triggered_by?.name ?? "System"}
+                        </SheetDescription>
+                      </div>
                     </div>
-                  )}
 
-                  {/* Mutation errors */}
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      aria-label="Refresh run details"
+                      disabled={isFetchingDetail}
+                      onClick={() => void refetchDetail()}
+                    >
+                      <RefreshCw
+                        className={
+                          isFetchingDetail
+                            ? "h-4 w-4 animate-spin"
+                            : "h-4 w-4"
+                        }
+                      />
+                    </Button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <StatusPill status={selectedRun.status} />
+                    <span className="text-sm tabular-nums text-muted-foreground">
+                      {selectedRun.is_active && selectedRun.started_at
+                        ? `Running for ${formatElapsed(selectedRun.started_at, now)}`
+                        : selectedRun.status === "queued"
+                          ? "Waiting for a worker"
+                          : formatDuration(selectedRun.duration_seconds)}
+                    </span>
+                    {selectedRun.last_heartbeat_at && selectedRun.is_active && (
+                      <span className="text-xs text-muted-foreground">
+                        Heartbeat{" "}
+                        {formatRelativeTime(selectedRun.last_heartbeat_at, now)}
+                      </span>
+                    )}
+                  </div>
+                </SheetHeader>
+
+                <div className="flex-1 space-y-7 px-4 py-6">
+                  {/* Action errors */}
                   {cancelErrorMessage && (
                     <InlineError
                       title="Cancellation failed"
@@ -1146,202 +1250,251 @@ export default function FacebookSyncRunsPage() {
                     />
                   )}
 
-                  {/* Run error */}
-                  {selectedRun.has_error && selectedRun.error?.message && (
+                  {/* Run failure */}
+                  {selectedRun.has_error && (
                     <InlineError
-                      title="Sync failed"
-                      message={selectedRun.error.message}
+                      title="Synchronization error"
+                      message={
+                        selectedRun.error?.message ??
+                        selectedRun.error_message ??
+                        "The run reported an error, but the server did not provide additional details."
+                      }
                       mono
                     />
                   )}
 
-                  {/* Page */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1877F2]/10 text-[#1877F2]">
-                      <FaFacebookF className="h-4 w-4" />
+                  {/* Pipeline: the one featured element */}
+                  <section className="space-y-4">
+                    <div className="flex items-end justify-between gap-3">
+                      <div>
+                        <SectionHeading title="Pipeline progress" />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatNumber(selectedPipeline.overall.finished)} of{" "}
+                          {formatNumber(selectedPipeline.overall.expected)}{" "}
+                          background jobs finished
+                        </p>
+                      </div>
+
+                      <span className="text-3xl font-semibold leading-none tracking-tight tabular-nums">
+                        {formatNumber(selectedPipeline.overall.progressPercent)}
+                        <span className="text-lg text-muted-foreground">%</span>
+                      </span>
                     </div>
 
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">
-                        {selectedRun.page?.name ?? "Unknown Facebook Page"}
-                      </p>
+                    <SegmentedBar
+                      completed={selectedPipeline.overall.completed}
+                      failed={selectedPipeline.overall.failed}
+                      expected={selectedPipeline.overall.expected}
+                      className="h-3"
+                    />
 
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {selectedRun.page?.facebook_page_id ??
-                          selectedRun.meta_page_id}
-                      </p>
+                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+                      <Legend
+                        dot="bg-primary"
+                        label={`${formatNumber(selectedPipeline.overall.completed)} completed`}
+                      />
+                      <Legend
+                        dot="bg-destructive"
+                        label={`${formatNumber(selectedPipeline.overall.failed)} failed`}
+                      />
+                      <Legend
+                        dot="bg-muted-foreground/30"
+                        label={`${formatNumber(selectedPipeline.overall.remaining)} remaining`}
+                      />
                     </div>
-                  </div>
+
+                    {!selectedPipeline.initialized &&
+                    selectedPipeline.overall.expected === 0 ? (
+                      <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                        The server has not reported job progress for this run
+                        yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-4 rounded-xl border p-4">
+                        <PipelineRow
+                          label="Comment synchronization"
+                          progress={selectedPipeline.commentJobs}
+                        />
+                        <PipelineRow
+                          label="Post AI analysis"
+                          progress={selectedPipeline.postAiJobs}
+                        />
+                        <PipelineRow
+                          label="Comment AI analysis"
+                          progress={selectedPipeline.commentAiJobs}
+                        />
+                      </div>
+                    )}
+                  </section>
+
+                  <Separator />
+
+                  {/* Import results */}
+                  <section className="space-y-3">
+                    <SectionHeading title="Import results" />
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <ResultCard
+                        title="Posts"
+                        total={selectedRun.statistics?.posts_fetched}
+                        lines={[
+                          [
+                            "New",
+                            selectedRun.statistics?.posts_created,
+                            false,
+                          ],
+                          [
+                            "Updated",
+                            selectedRun.statistics?.posts_updated,
+                            false,
+                          ],
+                        ]}
+                      />
+
+                      <ResultCard
+                        title="Comments"
+                        total={selectedRun.statistics?.comments_fetched}
+                        lines={[
+                          [
+                            "New",
+                            selectedRun.statistics?.comments_created,
+                            false,
+                          ],
+                          [
+                            "Updated",
+                            selectedRun.statistics?.comments_updated,
+                            false,
+                          ],
+                          [
+                            "Failed",
+                            selectedRun.statistics?.comments_failed,
+                            true,
+                          ],
+                        ]}
+                      />
+
+                      <ResultCard
+                        title="Queued for AI"
+                        total={
+                          (selectedRun.statistics?.posts_queued_for_ai ?? 0) +
+                          (selectedRun.statistics?.comments_queued_for_ai ?? 0)
+                        }
+                        lines={[
+                          [
+                            "Posts",
+                            selectedRun.statistics?.posts_queued_for_ai,
+                            false,
+                          ],
+                          [
+                            "Comments",
+                            selectedRun.statistics?.comments_queued_for_ai,
+                            false,
+                          ],
+                        ]}
+                      />
+
+                      <ResultCard
+                        title="AI analysis"
+                        total={selectedRun.statistics?.ai_completed}
+                        totalSuffix="done"
+                        lines={[
+                          [
+                            "Failed",
+                            selectedRun.statistics?.ai_failed,
+                            true,
+                          ],
+                        ]}
+                      />
+                    </div>
+                  </section>
 
                   <Separator />
 
                   {/* Timeline */}
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-4 text-sm">
-                    <DetailItem label="Queued">
-                      {formatDateTime(selectedRun.queued_at)}
-                    </DetailItem>
+                  <section className="space-y-3">
+                    <SectionHeading title="Timeline" />
 
-                    <DetailItem label="Started">
-                      {formatDateTime(selectedRun.started_at)}
-                    </DetailItem>
-
-                    <DetailItem label="Completed">
-                      {formatDateTime(selectedRun.completed_at)}
-                    </DetailItem>
-
-                    <DetailItem label="Duration">
-                      {selectedRun.is_active && selectedRun.started_at
-                        ? formatElapsed(selectedRun.started_at, now)
-                        : selectedRun.status === "queued"
-                          ? "Queued"
-                          : formatDuration(selectedRun.duration_seconds)}
-                    </DetailItem>
-                  </dl>
+                    <ol className="relative space-y-4 border-l pl-5">
+                      <TimelineStep
+                        label="Queued"
+                        value={selectedRun.queued_at}
+                      />
+                      <TimelineStep
+                        label="Started"
+                        value={selectedRun.started_at}
+                      />
+                      <TimelineStep
+                        label="Pipeline initialized"
+                        value={selectedPipeline.initializedAt}
+                      />
+                      <TimelineStep
+                        label="Completed"
+                        value={selectedRun.completed_at}
+                      />
+                      <TimelineStep
+                        label="Pipeline completed"
+                        value={selectedPipeline.completedAt}
+                      />
+                      <TimelineStep
+                        label="Finished"
+                        value={selectedRun.finished_at}
+                      />
+                    </ol>
+                  </section>
 
                   <Separator />
 
-                  {/* Progress */}
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium">Progress</p>
+                  {/* Technical details */}
+                  <section className="space-y-3">
+                    <SectionHeading title="Technical details" />
 
-                        <span className="text-sm font-semibold">
-                          {formatNumber(
-                            selectedRun.pipeline?.overall?.progressPercent ?? 0,
-                          )}
-                          %
-                        </span>
-                      </div>
-
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatNumber(
-                          selectedRun.pipeline?.overall?.completed ?? 0,
-                        )}{" "}
-                        completed ·{" "}
-                        {formatNumber(
-                          selectedRun.pipeline?.overall?.failed ?? 0,
-                        )}{" "}
-                        failed ·{" "}
-                        {formatNumber(
-                          selectedRun.pipeline?.overall?.remaining ?? 0,
-                        )}{" "}
-                        remaining
-                      </p>
-                    </div>
-
-                    <ProgressBar
-                      percent={
-                        selectedRun.pipeline?.overall?.progressPercent ?? 0
-                      }
-                      className="h-2"
-                    />
-
-                    <div className="space-y-4 pt-1">
-                      <PipelineProgressRow
-                        label="Comment sync"
-                        progress={selectedRun.pipeline?.commentJobs}
+                    <dl className="divide-y rounded-xl border text-sm">
+                      <KeyValue label="Run ID" value={selectedRun.id} copy />
+                      <KeyValue
+                        label="Meta page ID"
+                        value={
+                          selectedRun.meta_page_id ||
+                          selectedRun.page?.facebook_page_id
+                        }
+                        copy
                       />
-                      <PipelineProgressRow
-                        label="Post AI analysis"
-                        progress={selectedRun.pipeline?.postAiJobs}
+                      <KeyValue
+                        label="Internal page UUID"
+                        value={selectedRun.facebook_page_id}
+                        copy
                       />
-                      <PipelineProgressRow
-                        label="Comment AI analysis"
-                        progress={selectedRun.pipeline?.commentAiJobs}
+                      <KeyValue
+                        label="Queue job ID"
+                        value={selectedRun.job_id}
+                        copy
                       />
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  {/* Results */}
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium">Results</p>
-
-                    <ResultRow
-                      label="Posts"
-                      main={`${formatNumber(selectedRun.statistics?.posts_fetched)} fetched`}
-                      sub={`+${formatNumber(selectedRun.statistics?.posts_created)} new · ${formatNumber(selectedRun.statistics?.posts_updated)} updated`}
-                    />
-
-                    <ResultRow
-                      label="Comments"
-                      main={`${formatNumber(selectedRun.statistics?.comments_fetched)} fetched`}
-                      sub={`+${formatNumber(selectedRun.statistics?.comments_created)} new · ${formatNumber(selectedRun.statistics?.comments_updated)} updated`}
-                    />
-
-                    {(selectedRun.statistics?.comments_failed ?? 0) > 0 && (
-                      <ResultRow
-                        label="Comment failures"
-                        main={formatNumber(
-                          selectedRun.statistics?.comments_failed,
-                        )}
-                        danger
+                      <KeyValue label="Queue" value={selectedRun.queue} />
+                      <KeyValue
+                        label="Attempts"
+                        value={formatNumber(selectedRun.attempts)}
                       />
-                    )}
-
-                    <ResultRow
-                      label="AI analysis jobs"
-                      main={`${formatNumber(selectedRun.statistics?.ai_completed)} completed`}
-                      sub={
-                        (selectedRun.statistics?.ai_failed ?? 0) > 0
-                          ? `${formatNumber(selectedRun.statistics?.ai_failed)} failed`
-                          : undefined
-                      }
-                      subDanger
-                    />
-                  </div>
-
-                  <Separator />
-
-                  {/* Technical */}
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium">Technical details</p>
-
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                      <DetailItem label="Queue" mono>
-                        {selectedRun.queue}
-                      </DetailItem>
-
-                      <DetailItem label="Attempts">
-                        {selectedRun.attempts}
-                      </DetailItem>
-
-                      {selectedRun.job_id && (
-                        <DetailItem label="Queue job ID" mono wide>
-                          {selectedRun.job_id}
-                        </DetailItem>
-                      )}
-
-                      <DetailItem label="Internal page ID" mono wide>
-                        {selectedRun.facebook_page_id}
-                      </DetailItem>
-
-                      <DetailItem label="Meta page ID" mono wide>
-                        {selectedRun.meta_page_id}
-                      </DetailItem>
                     </dl>
-                  </div>
+                  </section>
                 </div>
 
-                <SheetFooter className="gap-2">
+                {/* Footer actions */}
+                <SheetFooter className="sticky bottom-0 gap-2 border-t bg-background py-4 sm:flex-row">
                   {selectedRunIsActive && (
                     <Button
                       variant="destructive"
-                      className="w-full gap-1.5"
+                      className="flex-1 gap-2"
                       onClick={() => handleCancel(selectedRun.id)}
                       disabled={isBusy}
                     >
                       {cancelMutation.isPending ? (
                         <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <Loader2 className="h-4 w-4 animate-spin" />
                           Cancelling…
                         </>
                       ) : (
                         <>
-                          <XCircle className="h-3.5 w-3.5" />
-                          Cancel sync
+                          <XCircle className="h-4 w-4" />
+                          Cancel run
                         </>
                       )}
                     </Button>
@@ -1349,54 +1502,57 @@ export default function FacebookSyncRunsPage() {
 
                   {canRetry(selectedRun.status) && (
                     <Button
-                      className="w-full gap-1.5"
+                      className="flex-1 gap-2"
                       onClick={() => handleRetry(selectedRun.id)}
                       disabled={isBusy}
                     >
                       {retryMutation.isPending ? (
                         <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <Loader2 className="h-4 w-4 animate-spin" />
                           Retrying…
                         </>
                       ) : (
                         <>
-                          <RefreshCw className="h-3.5 w-3.5" />
-                          Retry sync
+                          <RefreshCw className="h-4 w-4" />
+                          Retry run
                         </>
                       )}
                     </Button>
                   )}
 
-                  {selectedRun.page?.facebook_page_id ? (
-                    <Button
-                      variant="outline"
-                      className="w-full gap-1.5"
-                      onClick={() =>
-                        window.open(
-                          `https://facebook.com/${encodeURIComponent(
-                            selectedRun.page!.facebook_page_id,
-                          )}`,
-                          "_blank",
-                          "noopener,noreferrer",
-                        )
-                      }
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      Open page on Facebook
-                    </Button>
-                  ) : (
-                    <Button variant="outline" className="w-full" disabled>
-                      Facebook page unavailable
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-2"
+                    disabled={
+                      !selectedRun.page?.facebook_page_id &&
+                      !selectedRun.meta_page_id
+                    }
+                    onClick={() => {
+                      const facebookPageId =
+                        selectedRun.meta_page_id ||
+                        selectedRun.page?.facebook_page_id
+
+                      if (!facebookPageId) return
+
+                      window.open(
+                        `https://www.facebook.com/${encodeURIComponent(facebookPageId)}`,
+                        "_blank",
+                        "noopener,noreferrer",
+                      )
+                    }}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open on Facebook
+                  </Button>
                 </SheetFooter>
               </>
             ) : (
               <>
                 <SheetHeader>
-                  <SheetTitle>Sync run</SheetTitle>
+                  <SheetTitle>Run not found</SheetTitle>
                   <SheetDescription>
-                    This run could not be found.
+                    This run may have been removed or is no longer available to
+                    your account.
                   </SheetDescription>
                 </SheetHeader>
 
@@ -1419,116 +1575,228 @@ export default function FacebookSyncRunsPage() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Small components                                                           */
+/* Reusable UI components                                                     */
 /* -------------------------------------------------------------------------- */
 
-function getLabel<T extends string>(
-  options: { value: T | "all"; label: string }[],
-  value: T | "all",
-): string {
-  return options.find((option) => option.value === value)?.label ?? value
-}
-
-function SummaryTile({
+function StatCell({
   label,
   value,
-  hint,
-  tone = "default",
+  note,
+  dot,
+  danger = false,
   onClick,
+  className = "",
 }: {
   label: string
   value: string
-  hint: string
-  tone?: "default" | "danger"
+  note: string
+  dot?: string
+  danger?: boolean
   onClick: () => void
+  className?: string
 }) {
-  const danger = tone === "danger"
-
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border bg-card p-4 text-left transition-colors ${
-        danger ? "hover:bg-destructive/5" : "hover:bg-muted/40"
-      }`}
+      className={`p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5 ${className}`}
     >
-      <p
-        className={`text-sm ${
-          danger ? "text-destructive" : "text-muted-foreground"
-        }`}
-      >
+      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+        {dot && <span className={`h-2 w-2 rounded-full ${dot}`} />}
         {label}
-      </p>
+      </span>
 
-      <p
-        className={`mt-1 text-2xl font-semibold tabular-nums ${
+      <span
+        className={`mt-2 block text-3xl font-semibold leading-none tracking-tight tabular-nums ${
           danger ? "text-destructive" : ""
         }`}
       >
         {value}
-      </p>
+      </span>
 
-      <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+      <span className="mt-2 block truncate text-xs text-muted-foreground">
+        {note}
+      </span>
     </button>
   )
 }
 
-function FilterChip({
-  label,
-  onRemove,
-}: {
-  label: string
-  onRemove: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onRemove}
-      className="flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs font-medium transition-colors hover:bg-muted/70"
-    >
-      {label}
-      <X className="h-3 w-3 text-muted-foreground" />
-      <span className="sr-only">Remove filter</span>
-    </button>
-  )
-}
-
-function FilterGroup<T extends string>({
-  title,
-  options,
+function FilterSelect<T extends string>({
+  ariaLabel,
   value,
+  options,
   onChange,
 }: {
-  title: string
-  options: { value: T | "all"; label: string }[]
+  ariaLabel: string
   value: T | "all"
+  options: { value: T | "all"; label: string }[]
   onChange: (value: T | "all") => void
 }) {
   return (
-    <div className="space-y-3">
-      <p className="text-sm font-medium">{title}</p>
+    <Select value={value} onValueChange={(next) => onChange(next as T | "all")}>
+      <SelectTrigger
+        aria-label={ariaLabel}
+        className={`h-9 w-full bg-card sm:w-44 ${
+          value !== "all" ? "border-primary/50" : ""
+        }`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 
-      <div className="flex flex-wrap gap-2">
-        {options.map((option) => {
-          const selected = option.value === value
+function StatusPill({ status }: { status: SyncStatus }) {
+  const style = STATUS_STYLE[status]
+  if (!style) return null
 
-          return (
-            <button
-              key={option.value}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => onChange(option.value)}
-              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                selected
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-background hover:bg-muted"
-              }`}
-            >
-              {option.label}
-            </button>
-          )
-        })}
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${style.text}`}
+    >
+      {status === "running" ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+      )}
+      {style.label}
+    </span>
+  )
+}
+
+function AiMiniProgress({
+  completed,
+  failed,
+  queued,
+}: {
+  completed: number
+  failed: number
+  queued: number
+}) {
+  if (queued === 0 && completed === 0 && failed === 0) {
+    return <span className="text-sm text-muted-foreground">—</span>
+  }
+
+  const total = Math.max(queued, completed + failed)
+
+  return (
+    <div className="w-36 space-y-1">
+      <SegmentedBar
+        completed={completed}
+        failed={failed}
+        expected={total}
+        className="h-1.5"
+      />
+      <p className="flex justify-between text-xs tabular-nums text-muted-foreground">
+        <span>
+          {formatNumber(completed)} / {formatNumber(total)}
+        </span>
+        {failed > 0 && (
+          <span className="text-destructive">{formatNumber(failed)} failed</span>
+        )}
+      </p>
+    </div>
+  )
+}
+
+function RunActions({
+  run,
+  busy,
+  pending,
+  onView,
+  onRetry,
+  onCancel,
+}: {
+  run: FacebookSyncRun
+  busy: boolean
+  pending: boolean
+  onView: (id: string) => void
+  onRetry: (id: string) => void
+  onCancel: (id: string) => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          disabled={pending}
+          aria-label={`Actions for ${run.page?.name ?? "sync run"}`}
+        >
+          {pending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <MoreHorizontal className="h-4 w-4" />
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => onView(run.id)}>
+          <Search className="mr-2 h-4 w-4" />
+          View details
+        </DropdownMenuItem>
+
+        {isActiveStatus(run.status) && (
+          <DropdownMenuItem
+            disabled={busy}
+            onClick={() => onCancel(run.id)}
+            className="text-destructive focus:text-destructive"
+          >
+            <XCircle className="mr-2 h-4 w-4" />
+            Cancel run
+          </DropdownMenuItem>
+        )}
+
+        {canRetry(run.status) && (
+          <DropdownMenuItem disabled={busy} onClick={() => onRetry(run.id)}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Retry run
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function EmptyState({
+  filtered,
+  onClear,
+}: {
+  filtered: boolean
+  onClear: () => void
+}) {
+  return (
+    <div className="mx-auto flex max-w-sm flex-col items-center gap-3 px-4">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+        <History className="h-5 w-5 text-muted-foreground" />
       </div>
+
+      <div className="space-y-1">
+        <p className="font-medium">
+          {filtered ? "No runs match these filters" : "No sync runs yet"}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {filtered
+            ? "Change or clear the filters to see more runs."
+            : "Runs show up here once a Facebook page starts syncing."}
+        </p>
+      </div>
+
+      {filtered && (
+        <Button variant="outline" size="sm" onClick={onClear} className="gap-2">
+          <X className="h-3.5 w-3.5" />
+          Clear filters
+        </Button>
+      )}
     </div>
   )
 }
@@ -1538,27 +1806,32 @@ function InlineError({
   message,
   mono = false,
   onDismiss,
+  action,
 }: {
   title: string
   message: string
   mono?: boolean
   onDismiss?: () => void
+  action?: React.ReactNode
 }) {
   return (
-    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+    <div
+      role="alert"
+      className="rounded-xl border border-destructive/30 bg-destructive/5 p-4"
+    >
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
 
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-destructive">{title}</p>
-
           <p
-            className={`mt-1 break-words text-xs text-muted-foreground ${
-              mono ? "font-mono" : ""
+            className={`mt-1 break-words text-sm text-muted-foreground ${
+              mono ? "font-mono text-xs" : ""
             }`}
           >
             {message}
           </p>
+          {action && <div className="mt-3">{action}</div>}
         </div>
 
         {onDismiss && (
@@ -1568,9 +1841,9 @@ function InlineError({
             size="icon"
             className="h-7 w-7 shrink-0"
             onClick={onDismiss}
+            aria-label="Dismiss error"
           >
             <X className="h-3.5 w-3.5" />
-            <span className="sr-only">Dismiss</span>
           </Button>
         )}
       </div>
@@ -1578,127 +1851,215 @@ function InlineError({
   )
 }
 
-function DetailItem({
-  label,
-  children,
-  mono = false,
-  wide = false,
-}: {
-  label: string
-  children: React.ReactNode
-  mono?: boolean
-  wide?: boolean
-}) {
-  return (
-    <div className={wide ? "col-span-2" : undefined}>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-
-      <dd
-        className={`mt-1 break-all text-sm ${mono ? "font-mono text-xs" : ""}`}
-      >
-        {children}
-      </dd>
-    </div>
-  )
+function SectionHeading({ title }: { title: string }) {
+  return <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
 }
 
-function ResultRow({
-  label,
-  main,
-  sub,
-  danger = false,
-  subDanger = false,
+function SegmentedBar({
+  completed,
+  failed,
+  expected,
+  className = "h-2",
 }: {
-  label: string
-  main: string
-  sub?: string
-  danger?: boolean
-  subDanger?: boolean
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-
-      <span className="text-right">
-        <span className={`font-medium ${danger ? "text-destructive" : ""}`}>
-          {main}
-        </span>
-
-        {sub && (
-          <span
-            className={`block text-xs ${
-              subDanger ? "text-destructive" : "text-muted-foreground"
-            }`}
-          >
-            {sub}
-          </span>
-        )}
-      </span>
-    </div>
-  )
-}
-
-function ProgressBar({
-  percent,
-  className = "h-1.5",
-}: {
-  percent: number
+  completed: number
+  failed: number
+  expected: number
   className?: string
 }) {
-  const safe = Math.min(100, Math.max(0, percent))
+  const total = Math.max(expected, completed + failed, 1)
+  const completedPct = Math.min(100, (completed / total) * 100)
+  const failedPct = Math.min(100 - completedPct, (failed / total) * 100)
 
   return (
-    <div className={`overflow-hidden rounded-full bg-muted ${className}`}>
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(completedPct + failedPct)}
+      className={`flex overflow-hidden rounded-full bg-muted ${className}`}
+    >
       <div
-        className="h-full rounded-full bg-primary transition-all"
-        style={{ width: `${safe}%` }}
+        className="h-full bg-primary transition-[width] duration-300"
+        style={{ width: `${completedPct}%` }}
+      />
+      <div
+        className="h-full bg-destructive transition-[width] duration-300"
+        style={{ width: `${failedPct}%` }}
       />
     </div>
   )
 }
 
-function PipelineProgressRow({
+function Legend({ dot, label }: { dot: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`h-2 w-2 rounded-full ${dot}`} />
+      {label}
+    </span>
+  )
+}
+
+function PipelineRow({
   label,
   progress,
 }: {
   label: string
-  progress?: SafePipelineProgress | null
+  progress: PipelineProgress
 }) {
-  const expected = Math.max(0, progress?.expected ?? 0)
-  const completed = Math.max(0, progress?.completed ?? 0)
-  const failed = Math.max(0, progress?.failed ?? 0)
-  const finished = Math.max(0, progress?.finished ?? 0)
-  const percent = Math.min(100, Math.max(0, progress?.progressPercent ?? 0))
+  const { expected, completed, failed, finished, progressPercent } = progress
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="text-muted-foreground">{label}</span>
-
-        <span className="font-medium tabular-nums">
-          {formatNumber(finished)}/{formatNumber(expected)}
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm">{label}</span>
+        <span className="text-xs font-medium tabular-nums text-muted-foreground">
+          {expected === 0
+            ? "No jobs"
+            : `${formatNumber(finished)} / ${formatNumber(expected)}`}
         </span>
       </div>
 
-      <ProgressBar percent={percent} />
+      <SegmentedBar
+        completed={completed}
+        failed={failed}
+        expected={expected}
+        className="h-1.5"
+      />
 
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>{expected === 0 ? "No jobs" : `${percent}% complete`}</span>
+      {expected > 0 && (
+        <p className="flex justify-between text-xs text-muted-foreground">
+          <span>{progressPercent}% finished</span>
+          {failed > 0 && (
+            <span className="text-destructive">
+              {formatNumber(failed)} failed
+            </span>
+          )}
+        </p>
+      )}
+    </div>
+  )
+}
 
-        {expected > 0 && (
-          <span>
-            {formatNumber(completed)} completed
-            {failed > 0 && (
-              <>
-                {" · "}
-                <span className="text-destructive">
-                  {formatNumber(failed)} failed
-                </span>
-              </>
-            )}
-          </span>
-        )}
+function ResultCard({
+  title,
+  total,
+  totalSuffix = "fetched",
+  lines,
+}: {
+  title: string
+  total: number | null | undefined
+  totalSuffix?: string
+  lines: [string, number | null | undefined, boolean][]
+}) {
+  return (
+    <div className="rounded-xl border p-3.5">
+      <p className="text-xs text-muted-foreground">{title}</p>
+      <p className="mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums">
+        {formatNumber(total)}
+        <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+          {totalSuffix}
+        </span>
+      </p>
+
+      <dl className="mt-3 space-y-1 text-xs">
+        {lines.map(([label, value, danger]) => (
+          <div key={label} className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd
+              className={`font-medium tabular-nums ${
+                danger && (value ?? 0) > 0 ? "text-destructive" : ""
+              }`}
+            >
+              {formatNumber(value)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
+function TimelineStep({
+  label,
+  value,
+}: {
+  label: string
+  value: string | null | undefined
+}) {
+  const reached = Boolean(value)
+
+  return (
+    <li className="relative">
+      <span
+        className={`absolute -left-[25px] top-1 flex h-2.5 w-2.5 items-center justify-center rounded-full border-2 bg-background ${
+          reached ? "border-primary bg-primary" : "border-muted-foreground/30"
+        }`}
+      />
+      <div className="flex items-baseline justify-between gap-3">
+        <span
+          className={`text-sm ${
+            reached ? "font-medium" : "text-muted-foreground"
+          }`}
+        >
+          {label}
+        </span>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {formatDateTime(value)}
+        </span>
       </div>
+    </li>
+  )
+}
+
+function KeyValue({
+  label,
+  value,
+  copy = false,
+}: {
+  label: string
+  value: string | null | undefined
+  copy?: boolean
+}) {
+  const [copied, setCopied] = useState(false)
+
+  async function handleCopy() {
+    if (!value) return
+
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-4 px-3.5 py-2.5">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+
+      <dd className="flex min-w-0 items-center gap-1.5">
+        <span className="min-w-0 break-all text-right font-mono text-xs">
+          {value || "—"}
+        </span>
+
+        {copy && value && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 shrink-0"
+            aria-label={`Copy ${label}`}
+            onClick={() => void handleCopy()}
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-600" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        )}
+      </dd>
     </div>
   )
 }

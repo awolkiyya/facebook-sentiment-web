@@ -125,7 +125,9 @@ function isPublicRoute(path: string): boolean {
     path === "/" ||
     path.startsWith("/auth/login") ||
     path.startsWith("/auth/mfa-verify") ||
-    path.startsWith("/unauthorized")
+    path.startsWith("/unauthorized")||
+    path.startsWith("/privacy-policy") ||
+    path.startsWith("/data-deletion") 
   )
 }
 

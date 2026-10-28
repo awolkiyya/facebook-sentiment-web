@@ -479,24 +479,40 @@ export default function LoginPage() {
               </div>
             </div>
 
+            
             {/* Footer */}
-            <div className="mt-10 flex items-center justify-between text-xs text-muted-foreground">
-              <span>© {new Date().getFullYear()} CivicPulse</span>
-              <div className="flex items-center gap-4">
-                <Link
-                  href="/privacy"
-                  className="transition-colors hover:text-foreground"
+            <footer className="mt-10 border-t border-foreground/10 pt-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span>© {new Date().getFullYear()} CivicPulse</span>
+
+                <nav
+                  aria-label="Legal and privacy links"
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2"
                 >
-                  Privacy
-                </Link>
-                <Link
-                  href="/terms"
-                  className="transition-colors hover:text-foreground"
-                >
-                  Terms
-                </Link>
+                  <Link
+                    href="/privacy-policy"
+                    className="transition-colors hover:text-foreground"
+                  >
+                    Privacy Policy
+                  </Link>
+
+                  <Link
+                    href="/data-deletion"
+                    className="transition-colors hover:text-foreground"
+                  >
+                    Data Deletion
+                  </Link>
+
+                  <Link
+                    href="/terms"
+                    className="transition-colors hover:text-foreground"
+                  >
+                    Terms
+                  </Link>
+                </nav>
               </div>
-            </div>
+            </footer>
+
           </div>
         </section>
       </div>

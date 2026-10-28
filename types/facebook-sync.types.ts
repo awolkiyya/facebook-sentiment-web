@@ -1,3 +1,4 @@
+
 export type SyncStatus =
   | "queued"
   | "running"
@@ -102,7 +103,7 @@ export interface SyncPipelineJobProgress {
 | Pipeline
 |--------------------------------------------------------------------------
 |
-| The detailed endpoint returns this additional structure.
+| Returned by the detailed synchronization-run endpoint.
 |
 */
 
@@ -114,9 +115,7 @@ export interface FacebookSyncRunPipeline {
   completedAt: string | null
 
   commentJobs: SyncPipelineJobProgress
-
   postAiJobs: SyncPipelineJobProgress
-
   commentAiJobs: SyncPipelineJobProgress
 
   overall: {
@@ -149,15 +148,13 @@ export interface FacebookSyncRunError {
 |
 | GET /api/v1/facebook/sync-runs
 |
-| This interface now matches the Laravel JSON response directly.
-|
 */
 
 export interface FacebookSyncRun {
   id: string
 
   /**
-   * Internal UUID from facebook_pages table.
+   * Internal UUID from facebook_pages.id.
    */
   facebook_page_id: string
 
@@ -169,9 +166,7 @@ export interface FacebookSyncRun {
   page: FacebookSyncRunPage | null
 
   type: SyncType
-
   trigger: SyncTrigger
-
   status: SyncStatus
 
   /**
@@ -190,14 +185,17 @@ export interface FacebookSyncRun {
 
   statistics: FacebookSyncRunStatistics
 
-  queued_at: string
-
+  /*
+   * Lifecycle timestamps.
+   */
+  queued_at: string | null
   started_at: string | null
-
+  last_heartbeat_at: string | null
   completed_at: string | null
+  finished_at: string | null
 
   /**
-   * Backend calculated active status.
+   * Backend-calculated active status.
    */
   is_active: boolean
 
@@ -211,7 +209,6 @@ export interface FacebookSyncRun {
   error_message?: string | null
 
   created_at: string
-
   updated_at: string
 }
 
@@ -222,12 +219,9 @@ export interface FacebookSyncRun {
 |
 | GET /api/v1/facebook/sync-runs/{id}
 |
-| The detail endpoint can contain pipeline/error/metadata.
-|
 */
 
-export interface FacebookSyncRunDetail
-  extends FacebookSyncRun {
+export interface FacebookSyncRunDetail extends FacebookSyncRun {
   pipeline: FacebookSyncRunPipeline
 
   error: FacebookSyncRunError
@@ -239,34 +233,15 @@ export interface FacebookSyncRunDetail
 |--------------------------------------------------------------------------
 | Pagination
 |--------------------------------------------------------------------------
-|
-| Actual Laravel response:
-|
-| "pagination": {
-|   "current_page": 1,
-|   "per_page": 10,
-|   "total": 6,
-|   "last_page": 1,
-|   "from": 1,
-|   "to": 6,
-|   "has_more": false
-| }
-|
 */
 
 export interface FacebookSyncRunPagination {
   current_page: number
-
   per_page: number
-
   total: number
-
   last_page: number
-
   from: number | null
-
   to: number | null
-
   has_more: boolean
 }
 
@@ -278,11 +253,8 @@ export interface FacebookSyncRunPagination {
 
 export interface FacebookSyncRunPaginationLinks {
   first: string | null
-
   last: string | null
-
   prev: string | null
-
   next: string | null
 }
 
@@ -294,11 +266,8 @@ export interface FacebookSyncRunPaginationLinks {
 
 export interface FacebookSyncRunsResponseMeta {
   timestamp: string
-
   request_id: string
-
   version: string
-
   pagination: FacebookSyncRunPagination
 }
 
@@ -310,13 +279,9 @@ export interface FacebookSyncRunsResponseMeta {
 
 export interface FacebookSyncRunsResponse {
   success: boolean
-
   message: string
-
   data: FacebookSyncRun[]
-
   meta: FacebookSyncRunsResponseMeta
-
   links?: FacebookSyncRunPaginationLinks
 }
 
@@ -328,9 +293,7 @@ export interface FacebookSyncRunsResponse {
 
 export interface FacebookSyncRunDetailResponse {
   success: boolean
-
   message: string
-
   data: FacebookSyncRunDetail
 
   meta?: {
@@ -347,17 +310,20 @@ export interface FacebookSyncRunDetailResponse {
 */
 
 export interface FacebookSyncRunFilters {
+  /**
+   * Internal Laravel FacebookPage UUID.
+   */
   facebookPageId?: string
 
+  /**
+   * External Meta/Facebook Page ID, if supported by the API.
+   */
   metaPageId?: string
 
-  status?: SyncStatus | "all"
-
-  trigger?: SyncTrigger | "all"
-
-  type?: SyncType | "all"
+  status?: SyncFilterValue<SyncStatus>
+  trigger?: SyncFilterValue<SyncTrigger>
+  type?: SyncFilterValue<SyncType>
 
   page?: number
-
   perPage?: number
 }
