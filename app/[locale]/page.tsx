@@ -8,21 +8,16 @@ import {
 } from "react";
 import {
   AnimatePresence,
-  animate,
   motion,
-  useInView,
   useReducedMotion,
   useScroll,
   useTransform,
   type Variants,
 } from "framer-motion";
 import {
-  Activity,
   ArrowRight,
-  Bell,
   Brain,
   ChevronRight,
-  Globe2,
   Languages,
   Lock,
   LogIn,
@@ -152,74 +147,8 @@ const LANGUAGES = [
   { name: "English", native: "English", volume: 26, split: [58, 29, 13] },
 ];
 
-const FEED: {
-  lang: string;
-  sentiment: Sentiment;
-  topic: string;
-  text: string;
-  translation: string | null;
-  confidence: [number, number, number];
-  priority: "High" | "Medium" | "Low";
-}[] = [
-  {
-    lang: "Afaan Oromo",
-    sentiment: "negative",
-    topic: "Water supply",
-    text: "Bishaan naannoo keenya torban lama guutuu hin jiru.",
-    translation: "Our area has had no running water for two weeks.",
-    confidence: [99, 94, 91],
-    priority: "High",
-  },
-  {
-    lang: "Amharic",
-    sentiment: "positive",
-    topic: "Roads and construction",
-    text: "የመንገዱ ስራ በጣም ጥሩ ነው፣ አመሰግናለሁ።",
-    translation: "The road work is very good, thank you.",
-    confidence: [99, 97, 93],
-    priority: "Low",
-  },
-  {
-    lang: "English",
-    sentiment: "neutral",
-    topic: "Health services",
-    text: "When will the new health center open to the public?",
-    translation: null,
-    confidence: [100, 88, 90],
-    priority: "Medium",
-  },
-  {
-    lang: "English",
-    sentiment: "negative",
-    topic: "Waste collection",
-    text: "The waste truck has not come to our street this week.",
-    translation: null,
-    confidence: [100, 92, 95],
-    priority: "Medium",
-  },
-  {
-    lang: "Amharic",
-    sentiment: "positive",
-    topic: "Education",
-    text: "አዲሱ ትምህርት ቤት ለልጆቻችን ትልቅ ዕድል ነው።",
-    translation: "The new school is a great opportunity for our children.",
-    confidence: [99, 95, 89],
-    priority: "Low",
-  },
-  {
-    lang: "Afaan Oromo",
-    sentiment: "positive",
-    topic: "Electricity",
-    text: "Tajaajilli ibsaa fooyya'eera, galatoomaa.",
-    translation: "The electricity service has improved, thank you.",
-    confidence: [98, 93, 90],
-    priority: "Low",
-  },
-];
-
 const NAV_LINKS = [
   { href: "#product", label: "Product" },
-  { href: "#demo", label: "Live analysis" },
   { href: "#how", label: "How it works" },
   { href: "#trust", label: "Responsible AI" },
 ];
@@ -251,9 +180,7 @@ export default function HomePage() {
     <main className="min-h-screen overflow-x-clip bg-background text-foreground antialiased">
       <SiteHeader />
       <Hero />
-      <NumbersBand />
       <ProductTabs />
-      <LiveAnalysis />
       <HowItWorks />
       <TrustAndCta />
       <SiteFooter />
@@ -398,88 +325,6 @@ function SiteHeader() {
 /* =========================================================
    GRAPHICS PRIMITIVES
 ========================================================= */
-
-/** Counts up once when scrolled into view. */
-function Counter({
-  to,
-  decimals = 0,
-  suffix = "",
-}: {
-  to: number;
-  decimals?: number;
-  suffix?: string;
-}) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: "-40px" });
-  const reduce = useReducedMotion();
-  const [value, setValue] = useState(0);
-
-  useEffect(() => {
-    if (reduce) {
-      setValue(to);
-      return;
-    }
-    if (!inView) return;
-    const controls = animate(0, to, {
-      duration: 1.6,
-      ease: "easeOut",
-      onUpdate: setValue,
-    });
-    return () => controls.stop();
-  }, [inView, to, reduce]);
-
-  return (
-    <span ref={ref} className="tabular-nums">
-      {value.toLocaleString("en-US", {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      })}
-      {suffix}
-    </span>
-  );
-}
-
-function Sparkline({
-  values,
-  stroke = "var(--primary)",
-}: {
-  values: number[];
-  stroke?: string;
-}) {
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  const d = values
-    .map((v, i) => {
-      const x = (i / (values.length - 1)) * 100;
-      const y = 26 - ((v - min) / span) * 22;
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
-
-  return (
-    <svg
-      viewBox="0 0 100 30"
-      preserveAspectRatio="none"
-      aria-hidden="true"
-      className="h-8 w-full overflow-visible"
-    >
-      <motion.path
-        d={d}
-        fill="none"
-        stroke={stroke}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-        initial={{ pathLength: 0 }}
-        whileInView={{ pathLength: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 1.2, ease: "easeInOut" }}
-      />
-    </svg>
-  );
-}
 
 function smoothPath(points: [number, number][]) {
   return points.reduce((d, [x, y], i) => {
@@ -793,10 +638,10 @@ function Hero() {
             </Button>
           </Link>
           <a
-            href="#demo"
+            href="#product"
             className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-border bg-card/70 px-6 text-sm font-semibold backdrop-blur transition-colors hover:bg-muted sm:w-auto"
           >
-            Try live analysis
+            See the product
           </a>
         </motion.div>
       </motion.div>
@@ -836,42 +681,9 @@ function Dashboard() {
   const [range, setRange] = useState<7 | 30>(7);
 
   const kpis = [
-    {
-      label: "Comments analyzed",
-      value: 128430,
-      suffix: "",
-      delta: "+8.2%",
-      up: true,
-      spark: [30, 34, 33, 40, 44, 43, 52, 58],
-      stroke: "var(--primary)",
-    },
-    {
-      label: "Positive sentiment",
-      value: 58,
-      suffix: "%",
-      delta: "+6 pts",
-      up: true,
-      spark: POS_30.slice(-12),
-      stroke: "var(--primary)",
-    },
-    {
-      label: "Negative sentiment",
-      value: 15,
-      suffix: "%",
-      delta: "-4 pts",
-      up: false,
-      spark: NEG_30.slice(-12),
-      stroke: "var(--destructive)",
-    },
-    {
-      label: "Needs review",
-      value: 42,
-      suffix: "",
-      delta: "7 high",
-      up: true,
-      spark: [12, 18, 15, 24, 22, 30, 42],
-      stroke: "var(--chart-2)",
-    },
+    { label: "Positive", value: "58%", delta: "+6 pts", up: true },
+    { label: "Negative", value: "15%", delta: "-4 pts", up: false },
+    { label: "Needs review", value: "42", delta: "7 high", up: true },
   ];
 
   return (
@@ -887,27 +699,21 @@ function Dashboard() {
           <Lock className="h-3 w-3" />
           CivicPulse overview
         </div>
-        <span className="hidden items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary sm:inline-flex">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
-          </span>
-          Live
-        </span>
+        <div className="hidden w-10 sm:block" aria-hidden="true" />
       </div>
 
       <div className="space-y-3 p-4 text-left sm:p-5">
-        {/* KPIs */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {/* Three simple numbers */}
+        <div className="grid grid-cols-3 gap-3">
           {kpis.map((k) => (
             <div
               key={k.label}
-              className="rounded-xl border border-border bg-background p-4"
+              className="rounded-xl border border-border bg-background p-3.5 sm:p-4"
             >
               <p className="text-xs text-muted-foreground">{k.label}</p>
-              <div className="mt-2 flex items-end justify-between gap-2">
-                <p className="text-2xl font-semibold tracking-tight">
-                  <Counter to={k.value} suffix={k.suffix} />
+              <div className="mt-1.5 flex flex-wrap items-end justify-between gap-1.5">
+                <p className="text-xl font-semibold tracking-tight sm:text-2xl">
+                  {k.value}
                 </p>
                 <span
                   className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
@@ -924,9 +730,6 @@ function Dashboard() {
                   {k.delta}
                 </span>
               </div>
-              <div className="mt-3">
-                <Sparkline values={k.spark} stroke={k.stroke} />
-              </div>
             </div>
           ))}
         </div>
@@ -935,12 +738,7 @@ function Dashboard() {
         <div className="grid gap-3 lg:grid-cols-[1.7fr_1fr]">
           <div className="rounded-xl border border-border bg-background p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">Sentiment over time</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Hover the chart for daily values
-                </p>
-              </div>
+              <p className="text-sm font-medium">Sentiment over time</p>
               <div
                 role="group"
                 aria-label="Time range"
@@ -970,7 +768,7 @@ function Dashboard() {
 
           <div className="flex flex-col rounded-xl border border-border bg-background p-4">
             <p className="text-sm font-medium">Sentiment split</p>
-            <div className="my-4 flex-1">
+            <div className="my-4 flex flex-1 items-center">
               <Donut
                 center="58%"
                 sub="positive"
@@ -1002,152 +800,8 @@ function Dashboard() {
             </ul>
           </div>
         </div>
-
-        {/* Topics + live feed */}
-        <div className="grid gap-3 lg:grid-cols-2">
-          <TopicBars />
-          <LiveFeed />
-        </div>
       </div>
     </div>
-  );
-}
-
-function TopicBars() {
-  return (
-    <div className="rounded-xl border border-border bg-background p-4">
-      <p className="text-sm font-medium">Top concerns</p>
-      <ul className="mt-4 space-y-3.5">
-        {TOPICS.map((t, i) => (
-          <li key={t.label}>
-            <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
-              <span className="truncate text-foreground/85">{t.label}</span>
-              <span className="flex items-center gap-2">
-                <span
-                  className={`font-medium tabular-nums ${
-                    t.change >= 0 ? "text-destructive" : "text-primary"
-                  }`}
-                >
-                  {t.change > 0 ? "+" : ""}
-                  {t.change}
-                </span>
-                <span className="w-8 text-right font-semibold tabular-nums">
-                  {t.share}%
-                </span>
-              </span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <motion.div
-                initial={{ width: 0 }}
-                whileInView={{ width: `${(t.share / 31) * 100}%` }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.9, delay: 0.1 * i, ease: "easeOut" }}
-                className={`h-full rounded-full ${i === 1 ? "bg-chart-2" : "bg-primary"}`}
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/** New comments slide in at the top every few seconds. */
-function LiveFeed() {
-  const reduce = useReducedMotion();
-  const [items, setItems] = useState(() =>
-    [0, 1, 2, 3].map((i) => ({ uid: i, ...FEED[i % FEED.length] })),
-  );
-  const counter = useRef(4);
-
-  useEffect(() => {
-    if (reduce) return;
-    const id = setInterval(() => {
-      const n = counter.current++;
-      setItems((prev) =>
-        [{ uid: n, ...FEED[n % FEED.length] }, ...prev].slice(0, 4),
-      );
-    }, 3200);
-    return () => clearInterval(id);
-  }, [reduce]);
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-background p-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">Incoming comments</p>
-        <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
-          </span>
-          Analyzing
-        </span>
-      </div>
-
-      <ul className="mt-3 space-y-2">
-        <AnimatePresence initial={false} mode="popLayout">
-          {items.map((c) => (
-            <motion.li
-              key={c.uid}
-              layout
-              initial={{ opacity: 0, y: -18, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96 }}
-              transition={{ type: "spring", stiffness: 380, damping: 32 }}
-              className="rounded-lg border border-border bg-card p-3"
-            >
-              <p className="line-clamp-1 text-[13px] leading-5 text-foreground/90">
-                {c.text}
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
-                  {c.lang}
-                </span>
-                <span
-                  className={`rounded-md px-1.5 py-0.5 font-medium ${SENTIMENT[c.sentiment].chip}`}
-                >
-                  {SENTIMENT[c.sentiment].label}
-                </span>
-                <span className="text-muted-foreground">{c.topic}</span>
-              </div>
-            </motion.li>
-          ))}
-        </AnimatePresence>
-      </ul>
-    </div>
-  );
-}
-
-/* =========================================================
-   NUMBERS BAND
-========================================================= */
-
-function NumbersBand() {
-  const stats = [
-    { to: 128430, label: "Comments analyzed", suffix: "", decimals: 0 },
-    { to: 3, label: "Languages supported", suffix: "", decimals: 0 },
-    { to: 24, label: "Public-service topics detected", suffix: "", decimals: 0 },
-    { to: 58.4, label: "Average positive sentiment", suffix: "%", decimals: 1 },
-  ];
-
-  return (
-    <section className="px-5 pb-6 sm:px-8">
-      <div className="mx-auto max-w-6xl">
-        <div className="grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
-          {stats.map((s) => (
-            <div key={s.label} className="bg-card px-6 py-8">
-              <p className="text-4xl font-semibold tracking-[-0.04em]">
-                <Counter to={s.to} suffix={s.suffix} decimals={s.decimals} />
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">{s.label}</p>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-center text-xs text-muted-foreground">
-          Figures from a sample workspace.
-        </p>
-      </div>
-    </section>
   );
 }
 
@@ -1514,244 +1168,6 @@ function LanguagesPanel() {
 }
 
 /* =========================================================
-   LIVE ANALYSIS (interactive pipeline)
-========================================================= */
-
-function LiveAnalysis() {
-  const samples = FEED.slice(0, 4);
-  const [index, setIndex] = useState(0);
-  const [stage, setStage] = useState(0);
-  const reduce = useReducedMotion();
-  const sample = samples[index];
-
-  useEffect(() => {
-    if (reduce) {
-      setStage(3);
-      return;
-    }
-    setStage(0);
-    const timers = [
-      setTimeout(() => setStage(1), 600),
-      setTimeout(() => setStage(2), 1300),
-      setTimeout(() => setStage(3), 2000),
-    ];
-    return () => timers.forEach(clearTimeout);
-  }, [index, reduce]);
-
-  const rows: {
-    icon: LucideIcon;
-    label: string;
-    value: string;
-    confidence: number;
-    chip?: string;
-  }[] = [
-    {
-      icon: Globe2,
-      label: "Language",
-      value: sample.lang,
-      confidence: sample.confidence[0],
-    },
-    {
-      icon: Activity,
-      label: "Sentiment",
-      value: SENTIMENT[sample.sentiment].label,
-      confidence: sample.confidence[1],
-      chip: SENTIMENT[sample.sentiment].chip,
-    },
-    {
-      icon: Tag,
-      label: "Topic",
-      value: sample.topic,
-      confidence: sample.confidence[2],
-    },
-  ];
-
-  const priorityTone =
-    sample.priority === "High"
-      ? "bg-destructive/10 text-destructive"
-      : sample.priority === "Medium"
-        ? "bg-chart-2/15 text-primary"
-        : "bg-muted text-muted-foreground";
-
-  return (
-    <section
-      id="demo"
-      className="scroll-mt-20 border-y border-border bg-muted/30 px-5 py-20 sm:px-8 lg:py-28"
-    >
-      <div className="mx-auto max-w-6xl">
-        <SectionHeader
-          title="Watch a comment become an insight"
-          description="Pick a comment. CivicPulse reads the language, scores the sentiment and finds the topic in seconds."
-        />
-
-        <div className="mt-12 grid gap-6 lg:grid-cols-[1fr_1.1fr]">
-          {/* Input */}
-          <div className="space-y-3">
-            <div
-              role="tablist"
-              aria-label="Sample comments"
-              className="space-y-2.5"
-            >
-              {samples.map((s, i) => {
-                const selected = i === index;
-                return (
-                  <button
-                    key={s.text}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    onClick={() => setIndex(i)}
-                    className={`relative w-full overflow-hidden rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
-                      selected
-                        ? "border-primary/40 bg-card shadow-md shadow-primary/10"
-                        : "border-border bg-card/60 hover:bg-card"
-                    }`}
-                  >
-                    <span className="flex items-center justify-between">
-                      <span className="rounded-md bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground">
-                        {s.lang}
-                      </span>
-                      {selected && stage < 3 && (
-                        <span className="text-xs font-medium text-primary">
-                          Analyzing...
-                        </span>
-                      )}
-                    </span>
-                    <span className="mt-3 block text-[15px] leading-6">
-                      {s.text}
-                    </span>
-                    {selected && stage < 3 && !reduce && (
-                      <motion.span
-                        aria-hidden="true"
-                        initial={{ x: "-100%" }}
-                        animate={{ x: "100%" }}
-                        transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
-                        className="pointer-events-none absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-primary/10 to-transparent"
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="px-1 text-xs leading-5 text-muted-foreground">
-              Sample comments for demonstration. Scores are example output.
-            </p>
-          </div>
-
-          {/* Output */}
-          <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-foreground/[0.04]">
-            <div className="flex items-center justify-between border-b border-border px-6 py-4">
-              <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <Brain className="h-4 w-4" />
-                </span>
-                <p className="text-sm font-semibold">AI analysis</p>
-              </div>
-              <div className="flex items-center gap-1.5" aria-hidden="true">
-                {[0, 1, 2].map((i) => (
-                  <span
-                    key={i}
-                    className={`h-1.5 w-8 rounded-full transition-colors duration-300 ${
-                      stage > i ? "bg-primary" : "bg-muted"
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-3 p-6">
-              {sample.translation && (
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={sample.text}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: stage >= 1 ? 1 : 0.3 }}
-                    className="rounded-2xl bg-muted/70 p-4"
-                  >
-                    <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                      <Globe2 className="h-3.5 w-3.5" />
-                      English translation
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-foreground/80">
-                      {sample.translation}
-                    </p>
-                  </motion.div>
-                </AnimatePresence>
-              )}
-
-              {rows.map((row, i) => {
-                const Icon = row.icon;
-                const done = stage > i;
-                return (
-                  <div
-                    key={row.label}
-                    className="rounded-2xl border border-border p-4"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Icon className="h-3.5 w-3.5" />
-                        {row.label}
-                      </span>
-                      <AnimatePresence mode="wait" initial={false}>
-                        {done ? (
-                          <motion.span
-                            key={`${sample.text}-${row.label}-done`}
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={`rounded-md px-2 py-1 text-xs font-semibold ${row.chip ?? "text-foreground"}`}
-                          >
-                            {row.value}
-                          </motion.span>
-                        ) : (
-                          <motion.span
-                            key={`${sample.text}-${row.label}-wait`}
-                            exit={{ opacity: 0 }}
-                            className="h-5 w-24 animate-pulse rounded-md bg-muted"
-                          />
-                        )}
-                      </AnimatePresence>
-                    </div>
-                    <div className="mt-3 flex items-center gap-3">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                        <motion.div
-                          initial={false}
-                          animate={{ width: done ? `${row.confidence}%` : "0%" }}
-                          transition={{ duration: 0.7, ease: "easeOut" }}
-                          className="h-full rounded-full bg-primary"
-                        />
-                      </div>
-                      <span className="w-20 text-right text-xs tabular-nums text-muted-foreground">
-                        {done ? `${row.confidence}% match` : "..."}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-
-              <motion.div
-                initial={false}
-                animate={{ opacity: stage >= 3 ? 1 : 0.35 }}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/[0.06] p-4"
-              >
-                <span className="flex items-center gap-2 text-sm font-semibold">
-                  <Bell className="h-4 w-4 text-primary" />
-                  Review priority
-                </span>
-                <span
-                  className={`rounded-md px-2.5 py-1 text-xs font-semibold ${priorityTone}`}
-                >
-                  {stage >= 3 ? sample.priority : "Pending"}
-                </span>
-              </motion.div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* =========================================================
    HOW IT WORKS
 ========================================================= */
 
@@ -1931,10 +1347,10 @@ function TrustAndCta() {
                 </Button>
               </Link>
               <a
-                href="#demo"
+                href="#product"
                 className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-background/20 px-6 text-sm font-semibold transition-colors hover:bg-background/10 sm:w-auto"
               >
-                Try live analysis
+                See the product
               </a>
             </div>
             <p className="mt-6 text-xs text-background/50">
