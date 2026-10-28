@@ -281,40 +281,85 @@ export default function HomePage() {
 
       {/* FOOTER */}
 
-      <footer className="border-t border-border bg-card">
-        <div className="mx-auto flex max-w-6xl flex-col gap-5 px-5 py-7 sm:px-8 md:flex-row md:items-center md:justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground text-background">
-              <Waves className="h-4 w-4" />
-            </span>
+     
+{/* FOOTER */}
 
-            <span>
-              <span className="block text-sm font-bold tracking-tight">
-                CivicPulse
-              </span>
-              <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Public voice intelligence
-              </span>
-            </span>
-          </Link>
+<footer className="border-t border-border bg-card">
+  <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+    <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+      {/* Brand */}
+      <Link href="/" className="flex items-center gap-2.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground text-background">
+          <Waves className="h-4 w-4" />
+        </span>
 
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="transition hover:text-foreground"
-              >
-                {link.label}
-              </a>
-            ))}
-          </div>
+        <span>
+          <span className="block text-sm font-bold tracking-tight">
+            CivicPulse
+          </span>
+          <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Public voice intelligence
+          </span>
+        </span>
+      </Link>
 
-          <p className="text-xs leading-5 text-muted-foreground md:text-right">
-            Public-sector intelligence for better understanding.
-          </p>
-        </div>
-      </footer>
+      {/* Main navigation */}
+      <nav
+        aria-label="Footer navigation"
+        className="flex flex-wrap items-center gap-x-5 gap-y-3 text-xs text-muted-foreground"
+      >
+        {NAV_LINKS.map((link) => (
+          <a
+            key={link.href}
+            href={link.href}
+            className="transition hover:text-foreground"
+          >
+            {link.label}
+          </a>
+        ))}
+      </nav>
+
+      {/* Legal links */}
+      <nav
+        aria-label="Legal and privacy"
+        className="flex flex-wrap items-center gap-x-4 gap-y-3 text-xs text-muted-foreground"
+      >
+        <Link
+          href="/privacy-policy"
+          className="transition hover:text-foreground"
+        >
+          Privacy Policy
+        </Link>
+
+        <Link
+          href="/terms"
+          className="transition hover:text-foreground"
+        >
+          Terms of Service
+        </Link>
+
+        <Link
+          href="/data-deletion"
+          className="transition hover:text-foreground"
+        >
+          Data Deletion
+        </Link>
+      </nav>
+    </div>
+
+    {/* Footer description */}
+    <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs leading-5 text-muted-foreground">
+        Public-sector intelligence for better understanding.
+      </p>
+
+      <p className="text-xs text-muted-foreground">
+        © {new Date().getFullYear()} CivicPulse. All rights reserved.
+      </p>
+    </div>
+  </div>
+</footer>
+
     </main>
   );
 }

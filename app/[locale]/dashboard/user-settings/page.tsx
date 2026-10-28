@@ -277,6 +277,33 @@ export default function UserSettingsPage() {
       </SettingsGroup>
 
       {/* =====================================================
+    Legal & Privacy
+===================================================== */}
+
+<SettingsGroup title="Legal & Privacy">
+  <SettingItem
+    icon={ShieldCheck}
+    title="Privacy Policy"
+    description="Learn how CivicPulse handles your information"
+    onClick={() => goTo("/privacy-policy")}
+  />
+
+  <SettingItem
+    icon={ShieldCheck}
+    title="Data Deletion"
+    description="Learn how to request deletion of your data"
+    onClick={() => goTo("/data-deletion")}
+  />
+
+  <SettingItem
+    icon={ShieldCheck}
+    title="Terms of Service"
+    description="Review the rules for using CivicPulse"
+    onClick={() => goTo("/terms")}
+  />
+</SettingsGroup>
+
+      {/* =====================================================
           Sign out
       ===================================================== */}
 
