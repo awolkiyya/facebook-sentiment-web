@@ -663,13 +663,6 @@ export function AppSidebar({
     >
       <SidebarHeader className="gap-3 border-b border-sidebar-border bg-background p-3">
         <BrandRow name={tSystem("title")} href={homeHref} />
-
-        <PageSwitcher
-          pages={pages}
-          activePage={activePage}
-          onPageChange={onPageChange}
-          productName={tSystem("title")}
-        />
       </SidebarHeader>
 
       <SidebarContent className="gap-0 bg-background py-2">
