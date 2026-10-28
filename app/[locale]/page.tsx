@@ -1,32 +1,40 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, type Variants } from "framer-motion";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import {
+  AnimatePresence,
+  animate,
+  motion,
+  useInView,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+  type Variants,
+} from "framer-motion";
 import {
   Activity,
   ArrowRight,
   Bell,
-  BarChart3,
   Brain,
-  Building2,
-  Check,
   ChevronRight,
-  Eye,
-  Frown,
   Globe2,
-  Landmark,
+  Languages,
   Lock,
   LogIn,
-  Megaphone,
-  Meh,
   Menu,
   MessageSquareText,
+  PieChart,
   Plug,
   Search,
   ShieldCheck,
-  Smile,
   Sparkles,
   Tag,
+  TrendingDown,
   TrendingUp,
   UserCheck,
   X,
@@ -39,7 +47,7 @@ import { Button } from "@/components/ui/button";
 import Threads from "@/components/Threads";
 
 /* =========================================================
-   THEME HELPERS
+   THEME HELPER
    Threads (WebGL) needs a real color string, so we resolve a
    CSS variable from the shadcn theme into a hex value and
    re-resolve when the theme class changes (light/dark).
@@ -62,7 +70,7 @@ function useThemeColor(variable: string, fallback: string) {
       if (!ctx) return;
 
       ctx.fillStyle = fallback;
-      ctx.fillStyle = raw; // supports hex, hsl, oklch, etc.
+      ctx.fillStyle = raw;
       ctx.fillRect(0, 0, 1, 1);
 
       const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
@@ -72,13 +80,11 @@ function useThemeColor(variable: string, fallback: string) {
     };
 
     resolve();
-
     const observer = new MutationObserver(resolve);
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["class", "style", "data-theme"],
     });
-
     return () => observer.disconnect();
   }, [variable, fallback]);
 
@@ -86,134 +92,155 @@ function useThemeColor(variable: string, fallback: string) {
 }
 
 /* =========================================================
+   SAMPLE DATA (illustrative, deterministic so SSR matches)
+========================================================= */
+
+type Sentiment = "positive" | "neutral" | "negative";
+
+const SENTIMENT: Record<
+  Sentiment,
+  { label: string; chip: string; dot: string; stroke: string }
+> = {
+  positive: {
+    label: "Positive",
+    chip: "bg-primary/10 text-primary",
+    dot: "bg-primary",
+    stroke: "var(--primary)",
+  },
+  neutral: {
+    label: "Neutral",
+    chip: "bg-muted text-muted-foreground",
+    dot: "bg-muted-foreground/60",
+    stroke: "var(--muted-foreground)",
+  },
+  negative: {
+    label: "Negative",
+    chip: "bg-destructive/10 text-destructive",
+    dot: "bg-destructive",
+    stroke: "var(--destructive)",
+  },
+};
+
+function seeded(i: number) {
+  const x = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+const POS_30 = Array.from({ length: 30 }, (_, i) =>
+  Math.round(40 + i * 0.6 + Math.sin(i / 2.3) * 4 + seeded(i) * 4),
+);
+const NEG_30 = Array.from({ length: 30 }, (_, i) =>
+  Math.round(28 - i * 0.4 + Math.cos(i / 2.9) * 3 + seeded(i + 50) * 3),
+);
+
+const TOPICS = [
+  { label: "Roads and construction", share: 31, change: +4 },
+  { label: "Water supply", share: 24, change: +9 },
+  { label: "Waste collection", share: 18, change: -2 },
+  { label: "Health services", share: 12, change: +1 },
+  { label: "Electricity", share: 9, change: -3 },
+];
+
+const HEAT_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const HEAT = TOPICS.map((_, r) =>
+  HEAT_DAYS.map((_, c) => 0.12 + seeded(r * 7 + c + 3) * 0.88),
+);
+
+const LANGUAGES = [
+  { name: "Amharic", native: "አማርኛ", volume: 41, split: [61, 24, 15] },
+  { name: "Afaan Oromo", native: "Afaan Oromo", volume: 33, split: [52, 28, 20] },
+  { name: "English", native: "English", volume: 26, split: [58, 29, 13] },
+];
+
+const FEED: {
+  lang: string;
+  sentiment: Sentiment;
+  topic: string;
+  text: string;
+  translation: string | null;
+  confidence: [number, number, number];
+  priority: "High" | "Medium" | "Low";
+}[] = [
+  {
+    lang: "Afaan Oromo",
+    sentiment: "negative",
+    topic: "Water supply",
+    text: "Bishaan naannoo keenya torban lama guutuu hin jiru.",
+    translation: "Our area has had no running water for two weeks.",
+    confidence: [99, 94, 91],
+    priority: "High",
+  },
+  {
+    lang: "Amharic",
+    sentiment: "positive",
+    topic: "Roads and construction",
+    text: "የመንገዱ ስራ በጣም ጥሩ ነው፣ አመሰግናለሁ።",
+    translation: "The road work is very good, thank you.",
+    confidence: [99, 97, 93],
+    priority: "Low",
+  },
+  {
+    lang: "English",
+    sentiment: "neutral",
+    topic: "Health services",
+    text: "When will the new health center open to the public?",
+    translation: null,
+    confidence: [100, 88, 90],
+    priority: "Medium",
+  },
+  {
+    lang: "English",
+    sentiment: "negative",
+    topic: "Waste collection",
+    text: "The waste truck has not come to our street this week.",
+    translation: null,
+    confidence: [100, 92, 95],
+    priority: "Medium",
+  },
+  {
+    lang: "Amharic",
+    sentiment: "positive",
+    topic: "Education",
+    text: "አዲሱ ትምህርት ቤት ለልጆቻችን ትልቅ ዕድል ነው።",
+    translation: "The new school is a great opportunity for our children.",
+    confidence: [99, 95, 89],
+    priority: "Low",
+  },
+  {
+    lang: "Afaan Oromo",
+    sentiment: "positive",
+    topic: "Electricity",
+    text: "Tajaajilli ibsaa fooyya'eera, galatoomaa.",
+    translation: "The electricity service has improved, thank you.",
+    confidence: [98, 93, 90],
+    priority: "Low",
+  },
+];
+
+const NAV_LINKS = [
+  { href: "#product", label: "Product" },
+  { href: "#demo", label: "Live analysis" },
+  { href: "#how", label: "How it works" },
+  { href: "#trust", label: "Responsible AI" },
+];
+
+/* =========================================================
    MOTION
-   Motion is kept deliberate: one hero entrance, the pulse line
-   drawing itself, and responses to user actions.
 ========================================================= */
 
 const heroStagger: Variants = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.1 } },
+  visible: { transition: { staggerChildren: 0.09 } },
 };
 
 const heroItem: Variants = {
-  hidden: { opacity: 0, y: 16 },
+  hidden: { opacity: 0, y: 14 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.55, ease: "easeOut" },
+    transition: { duration: 0.5, ease: "easeOut" },
   },
 };
-
-/* =========================================================
-   CONTENT
-========================================================= */
-
-const NAV_LINKS = [
-  { href: "#product", label: "Product" },
-  { href: "#demo", label: "Live example" },
-  { href: "#how", label: "How it works" },
-  { href: "#use-cases", label: "Who it's for" },
-  { href: "#trust", label: "Responsible AI" },
-];
-
-type Sentiment = "positive" | "neutral" | "negative";
-
-const SENTIMENT_META: Record<
-  Sentiment,
-  { label: string; icon: LucideIcon; chip: string; dot: string }
-> = {
-  positive: {
-    label: "Positive",
-    icon: Smile,
-    chip: "bg-primary/10 text-primary",
-    dot: "bg-primary",
-  },
-  neutral: {
-    label: "Neutral",
-    icon: Meh,
-    chip: "bg-muted text-muted-foreground",
-    dot: "bg-muted-foreground",
-  },
-  negative: {
-    label: "Negative",
-    icon: Frown,
-    chip: "bg-destructive/10 text-destructive",
-    dot: "bg-destructive",
-  },
-};
-
-const DEMO_SAMPLES: {
-  id: string;
-  language: string;
-  code: string;
-  text: string;
-  translation: string | null;
-  sentiment: Sentiment;
-  topic: string;
-  priority: "High" | "Medium" | "Low";
-  takeaway: string;
-}[] = [
-  {
-    id: "or-water",
-    language: "Afaan Oromo",
-    code: "OR",
-    text: "Bishaan naannoo keenya torban lama guutuu hin jiru.",
-    translation: "Our area has had no running water for two weeks.",
-    sentiment: "negative",
-    topic: "Water supply",
-    priority: "High",
-    takeaway:
-      "The commenter reports a two-week water outage. A service team may want to confirm the affected area.",
-  },
-  {
-    id: "am-roads",
-    language: "Amharic",
-    code: "AM",
-    text: "የመንገዱ ስራ በጣም ጥሩ ነው፣ አመሰግናለሁ።",
-    translation: "The road work is very good, thank you.",
-    sentiment: "positive",
-    topic: "Roads and construction",
-    priority: "Low",
-    takeaway:
-      "Residents are expressing appreciation for completed road work. Useful for communications and progress reports.",
-  },
-  {
-    id: "en-waste",
-    language: "English",
-    code: "EN",
-    text: "The waste collection truck has not come to our street this week.",
-    translation: null,
-    sentiment: "negative",
-    topic: "Waste collection",
-    priority: "Medium",
-    takeaway:
-      "A missed collection is reported. Repeated mentions on one street could point to a route problem.",
-  },
-  {
-    id: "en-health",
-    language: "English",
-    code: "EN",
-    text: "When will the new health center open to the public?",
-    translation: null,
-    sentiment: "neutral",
-    topic: "Health services",
-    priority: "Medium",
-    takeaway:
-      "A question about an opening date. A clear public update could answer many similar comments at once.",
-  },
-];
-
-const TREND_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const POSITIVE_TREND = [42, 46, 44, 51, 55, 53, 58];
-const NEGATIVE_TREND = [24, 22, 25, 20, 18, 19, 15];
-
-const TOP_TOPICS = [
-  { label: "Roads and construction", share: 31 },
-  { label: "Water supply", share: 24 },
-  { label: "Waste collection", share: 18 },
-  { label: "Health services", share: 12 },
-];
 
 /* =========================================================
    PAGE
@@ -224,13 +251,11 @@ export default function HomePage() {
     <main className="min-h-screen overflow-x-clip bg-background text-foreground antialiased">
       <SiteHeader />
       <Hero />
-      <CapabilityStrip />
-      <FeatureGrid />
-      <LiveExample />
+      <NumbersBand />
+      <ProductTabs />
+      <LiveAnalysis />
       <HowItWorks />
-      <UseCases />
-      <ResponsibleAI />
-      <FinalCta />
+      <TrustAndCta />
       <SiteFooter />
     </main>
   );
@@ -240,7 +265,7 @@ export default function HomePage() {
    HEADER
 ========================================================= */
 
-function BrandMark({ size = 36 }: { size?: number }) {
+function BrandMark({ size = 34 }: { size?: number }) {
   return (
     <Link
       href="/"
@@ -286,28 +311,28 @@ function SiteHeader() {
       className={`fixed inset-x-0 top-0 z-50 border-b transition-colors duration-300 ${
         scrolled || open
           ? "border-border bg-background/85 backdrop-blur-xl"
-          : "border-transparent bg-transparent"
+          : "border-transparent"
       }`}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-        <BrandMark size={34} />
+        <BrandMark />
 
         <nav
           aria-label="Main navigation"
-          className="hidden items-center gap-1 lg:flex"
+          className="hidden items-center gap-1 md:flex"
         >
-          {NAV_LINKS.map((link) => (
+          {NAV_LINKS.map((l) => (
             <a
-              key={link.href}
-              href={link.href}
+              key={l.href}
+              href={l.href}
               className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              {link.label}
+              {l.label}
             </a>
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 lg:flex">
+        <div className="hidden items-center gap-2 md:flex">
           <Link
             href="/auth/login"
             className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -327,7 +352,7 @@ function SiteHeader() {
           aria-expanded={open}
           aria-controls="mobile-navigation"
           onClick={() => setOpen((v) => !v)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 lg:hidden"
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:hidden"
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
@@ -342,16 +367,16 @@ function SiteHeader() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18 }}
-            className="border-t border-border bg-background px-5 pb-5 pt-3 lg:hidden"
+            className="border-t border-border bg-background px-5 pb-5 pt-3 md:hidden"
           >
-            {NAV_LINKS.map((link) => (
+            {NAV_LINKS.map((l) => (
               <a
-                key={link.href}
-                href={link.href}
+                key={l.href}
+                href={l.href}
                 onClick={() => setOpen(false)}
                 className="flex items-center justify-between rounded-lg px-3 py-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
               >
-                {link.label}
+                {l.label}
                 <ChevronRight className="h-4 w-4 opacity-60" />
               </a>
             ))}
@@ -371,18 +396,334 @@ function SiteHeader() {
 }
 
 /* =========================================================
+   GRAPHICS PRIMITIVES
+========================================================= */
+
+/** Counts up once when scrolled into view. */
+function Counter({
+  to,
+  decimals = 0,
+  suffix = "",
+}: {
+  to: number;
+  decimals?: number;
+  suffix?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, margin: "-40px" });
+  const reduce = useReducedMotion();
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    if (reduce) {
+      setValue(to);
+      return;
+    }
+    if (!inView) return;
+    const controls = animate(0, to, {
+      duration: 1.6,
+      ease: "easeOut",
+      onUpdate: setValue,
+    });
+    return () => controls.stop();
+  }, [inView, to, reduce]);
+
+  return (
+    <span ref={ref} className="tabular-nums">
+      {value.toLocaleString("en-US", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })}
+      {suffix}
+    </span>
+  );
+}
+
+function Sparkline({
+  values,
+  stroke = "var(--primary)",
+}: {
+  values: number[];
+  stroke?: string;
+}) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const d = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * 100;
+      const y = 26 - ((v - min) / span) * 22;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+
+  return (
+    <svg
+      viewBox="0 0 100 30"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      className="h-8 w-full overflow-visible"
+    >
+      <motion.path
+        d={d}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+        initial={{ pathLength: 0 }}
+        whileInView={{ pathLength: 1 }}
+        viewport={{ once: true }}
+        transition={{ duration: 1.2, ease: "easeInOut" }}
+      />
+    </svg>
+  );
+}
+
+function smoothPath(points: [number, number][]) {
+  return points.reduce((d, [x, y], i) => {
+    if (i === 0) return `M${x} ${y}`;
+    const [px, py] = points[i - 1];
+    const cx = (px + x) / 2;
+    return `${d} C${cx} ${py}, ${cx} ${y}, ${x} ${y}`;
+  }, "");
+}
+
+/** Interactive two-series line chart with hover crosshair and tooltip. */
+function InteractiveTrend({ range }: { range: 7 | 30 }) {
+  const W = 640;
+  const H = 230;
+  const P = { t: 14, r: 12, b: 26, l: 34 };
+  const pos = POS_30.slice(-range);
+  const neg = NEG_30.slice(-range);
+  const n = pos.length;
+  const step = (W - P.l - P.r) / (n - 1);
+  const x = (i: number) => P.l + i * step;
+  const y = (v: number) => P.t + (1 - v / 80) * (H - P.t - P.b);
+
+  const [hover, setHover] = useState<number | null>(null);
+
+  const posPts = pos.map((v, i) => [x(i), y(v)] as [number, number]);
+  const negPts = neg.map((v, i) => [x(i), y(v)] as [number, number]);
+  const posLine = smoothPath(posPts);
+  const negLine = smoothPath(negPts);
+
+  const onMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const vx = ((e.clientX - r.left) / r.width) * W;
+    const i = Math.round((vx - P.l) / step);
+    setHover(Math.max(0, Math.min(n - 1, i)));
+  };
+
+  const label = (i: number) =>
+    i === n - 1 ? "Today" : `${n - 1 - i} day${n - 1 - i === 1 ? "" : "s"} ago`;
+
+  return (
+    <div className="relative">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={`Illustrative ${range} day trend. Positive sentiment moves from ${pos[0]} to ${pos[n - 1]} percent. Negative sentiment moves from ${neg[0]} to ${neg[n - 1]} percent.`}
+        onPointerMove={onMove}
+        onPointerLeave={() => setHover(null)}
+        className="w-full touch-pan-y"
+      >
+        <defs>
+          <linearGradient id="cp-trend-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {[0, 20, 40, 60, 80].map((v) => (
+          <g key={v}>
+            <line
+              x1={P.l}
+              x2={W - P.r}
+              y1={y(v)}
+              y2={y(v)}
+              stroke="var(--border)"
+              strokeDasharray="3 5"
+            />
+            <text
+              x={P.l - 8}
+              y={y(v) + 3.5}
+              textAnchor="end"
+              fontSize="10"
+              fill="var(--muted-foreground)"
+            >
+              {v}%
+            </text>
+          </g>
+        ))}
+
+        <motion.path
+          key={`area-${range}`}
+          d={`${posLine} L${x(n - 1)} ${y(0)} L${x(0)} ${y(0)} Z`}
+          fill="url(#cp-trend-fill)"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8, delay: 0.5 }}
+        />
+        <motion.path
+          key={`neg-${range}`}
+          d={negLine}
+          fill="none"
+          stroke="var(--destructive)"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.1, ease: "easeInOut" }}
+        />
+        <motion.path
+          key={`pos-${range}`}
+          d={posLine}
+          fill="none"
+          stroke="var(--primary)"
+          strokeWidth="3"
+          strokeLinecap="round"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.1, ease: "easeInOut" }}
+        />
+
+        {[0, Math.floor((n - 1) / 2), n - 1].map((i) => (
+          <text
+            key={i}
+            x={x(i)}
+            y={H - 6}
+            textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"}
+            fontSize="10"
+            fill="var(--muted-foreground)"
+          >
+            {label(i)}
+          </text>
+        ))}
+
+        {hover !== null && (
+          <g pointerEvents="none">
+            <line
+              x1={x(hover)}
+              x2={x(hover)}
+              y1={P.t}
+              y2={H - P.b}
+              stroke="var(--foreground)"
+              strokeOpacity="0.25"
+            />
+            <circle cx={x(hover)} cy={y(neg[hover])} r="5" fill="var(--card)" stroke="var(--destructive)" strokeWidth="2.5" />
+            <circle cx={x(hover)} cy={y(pos[hover])} r="5" fill="var(--card)" stroke="var(--primary)" strokeWidth="2.5" />
+          </g>
+        )}
+      </svg>
+
+      {hover !== null && (
+        <div
+          className="pointer-events-none absolute top-0 min-w-[130px] -translate-x-1/2 rounded-xl border border-border bg-card px-3 py-2 text-xs shadow-xl"
+          style={{
+            left: `${Math.min(Math.max((x(hover) / W) * 100, 14), 86)}%`,
+          }}
+        >
+          <p className="font-medium">{label(hover)}</p>
+          <p className="mt-1.5 flex items-center justify-between gap-4 text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              Positive
+            </span>
+            <span className="font-semibold tabular-nums text-foreground">
+              {pos[hover]}%
+            </span>
+          </p>
+          <p className="mt-1 flex items-center justify-between gap-4 text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-destructive" />
+              Negative
+            </span>
+            <span className="font-semibold tabular-nums text-foreground">
+              {neg[hover]}%
+            </span>
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Donut({
+  segments,
+  center,
+  sub,
+}: {
+  segments: { label: string; value: number; stroke: string }[];
+  center: string;
+  sub: string;
+}) {
+  const r = 52;
+  const C = 2 * Math.PI * r;
+  const total = segments.reduce((a, s) => a + s.value, 0);
+  const lengths = segments.map((s) => (s.value / total) * C);
+  const offsets = lengths.map((_, i) =>
+    lengths.slice(0, i).reduce((a, b) => a + b, 0),
+  );
+
+  return (
+    <div
+      className="relative mx-auto h-40 w-40"
+      role="img"
+      aria-label={segments.map((s) => `${s.label} ${s.value} percent`).join(", ")}
+    >
+      <svg viewBox="0 0 140 140" className="-rotate-90">
+        <circle cx="70" cy="70" r={r} fill="none" stroke="var(--muted)" strokeWidth="14" />
+        {segments.map((s, i) => (
+          <motion.circle
+            key={s.label}
+            cx="70"
+            cy="70"
+            r={r}
+            fill="none"
+            stroke={s.stroke}
+            strokeWidth="14"
+            strokeDashoffset={-offsets[i]}
+            initial={{ strokeDasharray: `0 ${C}` }}
+            whileInView={{
+              strokeDasharray: `${Math.max(lengths[i] - 3, 0)} ${C}`,
+            }}
+            viewport={{ once: true }}
+            transition={{ duration: 1, delay: 0.15 + i * 0.15, ease: "easeOut" }}
+          />
+        ))}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-3xl font-semibold tracking-tight tabular-nums">
+          {center}
+        </span>
+        <span className="text-xs text-muted-foreground">{sub}</span>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
    HERO
 ========================================================= */
 
 function Hero() {
   const threadsColor = useThemeColor("--primary", "#0066FF");
+  const reduce = useReducedMotion();
+  const previewRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: previewRef,
+    offset: ["start end", "start 0.25"],
+  });
+  const rotateX = useTransform(scrollYProgress, [0, 1], [16, 0]);
+  const scale = useTransform(scrollYProgress, [0, 1], [0.93, 1]);
 
   return (
-    <section className="relative isolate overflow-hidden px-5 pb-8 pt-32 sm:px-8 sm:pt-40 lg:pt-44">
-      {/* Background: threads + faint grid, both fade out toward the bottom */}
+    <section className="relative isolate overflow-hidden px-5 pb-16 pt-32 sm:px-8 sm:pt-40">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10 [mask-image:linear-gradient(to_bottom,black_35%,transparent_95%)]"
+        className="pointer-events-none absolute inset-0 -z-10 [mask-image:linear-gradient(to_bottom,black_30%,transparent_92%)]"
       >
         <Threads
           color={threadsColor}
@@ -401,13 +742,13 @@ function Hero() {
           parting={0}
           enableMouseInteraction
           fade={0}
-          opacity={0.35}
+          opacity={0.32}
           seed={0}
         />
       </div>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10 opacity-60 [background-image:linear-gradient(to_right,color-mix(in_oklab,var(--foreground)_7%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--foreground)_7%,transparent)_1px,transparent_1px)] [background-size:64px_64px] [mask-image:radial-gradient(ellipse_70%_55%_at_50%_0%,black,transparent)]"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-60 [background-image:linear-gradient(to_right,color-mix(in_oklab,var(--foreground)_7%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--foreground)_7%,transparent)_1px,transparent_1px)] [background-size:64px_64px] [mask-image:radial-gradient(ellipse_70%_50%_at_50%_0%,black,transparent)]"
       />
 
       <motion.div
@@ -423,23 +764,22 @@ function Hero() {
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Sparkles className="h-3 w-3" />
           </span>
-          Sentiment and language insight for Amharic, Afaan Oromo and English
+          Sentiment analysis in Amharic, Afaan Oromo and English
         </motion.span>
 
         <motion.h1
           variants={heroItem}
           className="mt-7 text-balance text-[40px] font-semibold leading-[1.05] tracking-[-0.045em] sm:text-6xl lg:text-[68px]"
         >
-          Turn public conversations into decisions you can act on.
+          Know what your citizens think, in real time.
         </motion.h1>
 
         <motion.p
           variants={heroItem}
           className="mt-6 max-w-xl text-pretty text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8"
         >
-          CivicPulse reads the comments citizens leave on your Facebook Page,
-          then shows you how people feel, what they talk about, and what needs
-          attention first.
+          CivicPulse analyzes every comment on your Facebook Page for language,
+          sentiment and topic, so you see what matters first.
         </motion.p>
 
         <motion.div
@@ -454,378 +794,358 @@ function Hero() {
           </Link>
           <a
             href="#demo"
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-border bg-card/70 px-6 text-sm font-semibold text-foreground backdrop-blur transition-colors hover:bg-muted sm:w-auto"
+            className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-border bg-card/70 px-6 text-sm font-semibold backdrop-blur transition-colors hover:bg-muted sm:w-auto"
           >
-            See a live example
+            Try live analysis
           </a>
         </motion.div>
-
-        <motion.ul
-          variants={heroItem}
-          className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground"
-        >
-          {["Amharic", "Afaan Oromo", "English"].map((lang) => (
-            <li key={lang} className="inline-flex items-center gap-2">
-              <Check className="h-4 w-4 text-primary" aria-hidden="true" />
-              {lang}
-            </li>
-          ))}
-        </motion.ul>
       </motion.div>
 
-      {/* Product preview */}
-      <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.9, ease: "easeOut", delay: 0.35 }}
+      {/* Dashboard preview with scroll-linked tilt */}
+      <div
+        ref={previewRef}
         className="relative mx-auto mt-16 max-w-5xl sm:mt-20"
+        style={{ perspective: 1600 }}
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -inset-x-10 -top-10 bottom-0 -z-10 rounded-[48px] bg-primary/15 blur-[90px]"
+          className="pointer-events-none absolute -inset-x-8 -top-8 bottom-10 -z-10 rounded-[48px] bg-primary/20 blur-[90px]"
         />
-
-        <DashboardPreview />
-
-        {/* Floating context cards (large screens) */}
-        <div className="absolute -left-6 top-28 hidden w-56 rounded-2xl border border-border bg-card p-4 shadow-xl shadow-foreground/10 xl:block">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Globe2 className="h-3.5 w-3.5 text-primary" />
-            Language detected
-          </div>
-          <p className="mt-2 text-sm font-semibold">Afaan Oromo</p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Translated for review by your team.
-          </p>
-        </div>
-
-        <div className="absolute -right-6 bottom-32 hidden w-56 rounded-2xl border border-border bg-card p-4 shadow-xl shadow-foreground/10 xl:block">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Bell className="h-3.5 w-3.5 text-destructive" />
-            Flagged for review
-          </div>
-          <p className="mt-2 text-sm font-semibold">Water supply</p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Several negative comments from one area.
-          </p>
-        </div>
-
+        <motion.div
+          style={
+            reduce
+              ? undefined
+              : { rotateX, scale, transformOrigin: "50% 0%" }
+          }
+        >
+          <Dashboard />
+        </motion.div>
         <p className="mt-5 text-center text-xs text-muted-foreground">
           Product preview with illustrative data.
         </p>
-      </motion.div>
+      </div>
     </section>
   );
 }
 
 /* =========================================================
-   TREND CHART (shared by hero preview and features)
+   DASHBOARD (hero)
 ========================================================= */
 
-function smoothPath(points: [number, number][]) {
-  return points.reduce((d, [x, y], i) => {
-    if (i === 0) return `M${x} ${y}`;
-    const [px, py] = points[i - 1];
-    const cx = (px + x) / 2;
-    return `${d} C${cx} ${py}, ${cx} ${y}, ${x} ${y}`;
-  }, "");
-}
+function Dashboard() {
+  const [range, setRange] = useState<7 | 30>(7);
 
-function TrendChart({
-  height = 150,
-  showLabels = true,
-}: {
-  height?: number;
-  showLabels?: boolean;
-}) {
-  const w = 420;
-  const h = 150;
-  const max = 70;
-  const toPoints = (values: number[]): [number, number][] =>
-    values.map((v, i) => [(i * w) / (values.length - 1), h - (v / max) * h]);
-
-  const positive = toPoints(POSITIVE_TREND);
-  const negative = toPoints(NEGATIVE_TREND);
-  const positiveLine = smoothPath(positive);
-  const negativeLine = smoothPath(negative);
+  const kpis = [
+    {
+      label: "Comments analyzed",
+      value: 128430,
+      suffix: "",
+      delta: "+8.2%",
+      up: true,
+      spark: [30, 34, 33, 40, 44, 43, 52, 58],
+      stroke: "var(--primary)",
+    },
+    {
+      label: "Positive sentiment",
+      value: 58,
+      suffix: "%",
+      delta: "+6 pts",
+      up: true,
+      spark: POS_30.slice(-12),
+      stroke: "var(--primary)",
+    },
+    {
+      label: "Negative sentiment",
+      value: 15,
+      suffix: "%",
+      delta: "-4 pts",
+      up: false,
+      spark: NEG_30.slice(-12),
+      stroke: "var(--destructive)",
+    },
+    {
+      label: "Needs review",
+      value: 42,
+      suffix: "",
+      delta: "7 high",
+      up: true,
+      spark: [12, 18, 15, 24, 22, 30, 42],
+      stroke: "var(--chart-2)",
+    },
+  ];
 
   return (
-    <div>
-      <svg
-        viewBox={`0 0 ${w} ${h}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="Illustrative seven day trend: positive sentiment rising from 42 to 58 percent while negative sentiment falls from 24 to 15 percent"
-        style={{ height }}
-        className="w-full overflow-visible"
-      >
-        <defs>
-          <linearGradient id="cp-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-
-        {[0.25, 0.5, 0.75].map((r) => (
-          <line
-            key={r}
-            x1="0"
-            x2={w}
-            y1={h * r}
-            y2={h * r}
-            stroke="var(--border)"
-            strokeDasharray="3 5"
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-
-        <path d={`${positiveLine} L${w} ${h} L0 ${h} Z`} fill="url(#cp-area)" />
-
-        <motion.path
-          d={negativeLine}
-          fill="none"
-          stroke="var(--destructive)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 1.4, delay: 0.9, ease: "easeInOut" }}
-        />
-        <motion.path
-          d={positiveLine}
-          fill="none"
-          stroke="var(--primary)"
-          strokeWidth="2.75"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 1.4, delay: 0.7, ease: "easeInOut" }}
-        />
-      </svg>
-
-      {showLabels && (
-        <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-          {TREND_DAYS.map((d) => (
-            <span key={d}>{d}</span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* =========================================================
-   DASHBOARD PREVIEW (hero)
-========================================================= */
-
-const SIDEBAR_ITEMS: { icon: LucideIcon; label: string; active?: boolean }[] = [
-  { icon: BarChart3, label: "Overview", active: true },
-  { icon: MessageSquareText, label: "Comments" },
-  { icon: Tag, label: "Topics" },
-  { icon: Activity, label: "Trends" },
-  { icon: Bell, label: "Review queue" },
-];
-
-function DashboardPreview() {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-foreground/10 ring-1 ring-foreground/[0.03]">
-      {/* Window chrome */}
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-foreground/15 ring-1 ring-foreground/[0.03]">
+      {/* Window bar */}
       <div className="flex items-center gap-3 border-b border-border bg-muted/50 px-4 py-3">
         <div aria-hidden="true" className="flex gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-foreground/15" />
           <span className="h-2.5 w-2.5 rounded-full bg-foreground/15" />
           <span className="h-2.5 w-2.5 rounded-full bg-foreground/15" />
         </div>
-        <div className="mx-auto flex h-7 w-full max-w-xs items-center justify-center rounded-md border border-border bg-background text-[11px] text-muted-foreground">
+        <div className="mx-auto flex h-7 w-full max-w-xs items-center justify-center gap-2 rounded-md border border-border bg-background text-[11px] text-muted-foreground">
+          <Lock className="h-3 w-3" />
           CivicPulse overview
         </div>
-        <div className="w-10" aria-hidden="true" />
+        <span className="hidden items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary sm:inline-flex">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+          </span>
+          Live
+        </span>
       </div>
 
-      <div className="grid md:grid-cols-[200px_1fr]">
-        {/* Sidebar */}
-        <aside className="hidden border-r border-border bg-muted/30 p-4 md:block">
-          <div className="flex items-center gap-2 px-2 pb-4">
-            <Image
-              src="/icons/icon.png"
-              alt=""
-              width={24}
-              height={24}
-              className="h-6 w-6 object-contain"
-            />
-            <span className="text-sm font-semibold">CivicPulse</span>
-          </div>
-          <ul className="space-y-1">
-            {SIDEBAR_ITEMS.map(({ icon: Icon, label, active }) => (
-              <li
-                key={label}
-                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium ${
-                  active
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </li>
-            ))}
-          </ul>
-        </aside>
-
-        {/* Main */}
-        <div className="min-w-0 p-4 text-left sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold tracking-tight">
-                Public sentiment
-              </h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Sample page, last 7 days
-              </p>
-            </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-              Demo data
-            </span>
-          </div>
-
-          {/* KPIs */}
-          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {[
-              {
-                label: "Comments analyzed",
-                value: "12,480",
-                note: "+8% vs last week",
-                icon: MessageSquareText,
-              },
-              {
-                label: "Positive sentiment",
-                value: "58%",
-                note: "+6 points",
-                icon: TrendingUp,
-              },
-              {
-                label: "Needs review",
-                value: "42",
-                note: "7 high priority",
-                icon: Bell,
-              },
-            ].map(({ label, value, note, icon: Icon }) => (
-              <div
-                key={label}
-                className="rounded-xl border border-border bg-background p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <Icon className="h-4 w-4 text-primary" />
-                </div>
-                <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
-                  {value}
+      <div className="space-y-3 p-4 text-left sm:p-5">
+        {/* KPIs */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {kpis.map((k) => (
+            <div
+              key={k.label}
+              className="rounded-xl border border-border bg-background p-4"
+            >
+              <p className="text-xs text-muted-foreground">{k.label}</p>
+              <div className="mt-2 flex items-end justify-between gap-2">
+                <p className="text-2xl font-semibold tracking-tight">
+                  <Counter to={k.value} suffix={k.suffix} />
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">{note}</p>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                    k.up
+                      ? "bg-primary/10 text-primary"
+                      : "bg-destructive/10 text-destructive"
+                  }`}
+                >
+                  {k.up ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {k.delta}
+                </span>
               </div>
-            ))}
-          </div>
-
-          <div className="mt-3 grid gap-3 lg:grid-cols-[1.4fr_1fr]">
-            {/* Trend */}
-            <div className="rounded-xl border border-border bg-background p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">Sentiment trend</p>
-                <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-primary" />
-                    Positive
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-destructive" />
-                    Negative
-                  </span>
-                </div>
-              </div>
-              <div className="mt-4">
-                <TrendChart />
+              <div className="mt-3">
+                <Sparkline values={k.spark} stroke={k.stroke} />
               </div>
             </div>
+          ))}
+        </div>
 
-            {/* Topics */}
-            <div className="rounded-xl border border-border bg-background p-4">
-              <p className="text-sm font-medium">Top concerns</p>
-              <ul className="mt-4 space-y-3.5">
-                {TOP_TOPICS.map((topic, i) => (
-                  <li key={topic.label}>
-                    <div className="mb-1.5 flex items-center justify-between text-xs">
-                      <span className="truncate text-foreground/80">
-                        {topic.label}
-                      </span>
-                      <span className="font-medium tabular-nums text-muted-foreground">
-                        {topic.share}%
-                      </span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${topic.share * 2.8}%` }}
-                        transition={{
-                          duration: 0.9,
-                          delay: 0.8 + i * 0.1,
-                          ease: "easeOut",
-                        }}
-                        className={`h-full rounded-full ${
-                          i === 1 ? "bg-chart-2" : "bg-primary"
-                        }`}
-                      />
-                    </div>
-                  </li>
+        {/* Trend + donut */}
+        <div className="grid gap-3 lg:grid-cols-[1.7fr_1fr]">
+          <div className="rounded-xl border border-border bg-background p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Sentiment over time</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Hover the chart for daily values
+                </p>
+              </div>
+              <div
+                role="group"
+                aria-label="Time range"
+                className="inline-flex rounded-lg border border-border bg-muted/60 p-0.5 text-xs font-medium"
+              >
+                {([7, 30] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    aria-pressed={range === r}
+                    onClick={() => setRange(r)}
+                    className={`rounded-md px-3 py-1 transition-colors ${
+                      range === r
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {r} days
+                  </button>
                 ))}
-              </ul>
+              </div>
+            </div>
+            <div className="mt-4">
+              <InteractiveTrend range={range} />
             </div>
           </div>
+
+          <div className="flex flex-col rounded-xl border border-border bg-background p-4">
+            <p className="text-sm font-medium">Sentiment split</p>
+            <div className="my-4 flex-1">
+              <Donut
+                center="58%"
+                sub="positive"
+                segments={[
+                  { label: "Positive", value: 58, stroke: SENTIMENT.positive.stroke },
+                  { label: "Neutral", value: 27, stroke: "var(--muted-foreground)" },
+                  { label: "Negative", value: 15, stroke: SENTIMENT.negative.stroke },
+                ]}
+              />
+            </div>
+            <ul className="grid grid-cols-3 gap-2 text-xs">
+              {(
+                [
+                  ["positive", 58],
+                  ["neutral", 27],
+                  ["negative", 15],
+                ] as [Sentiment, number][]
+              ).map(([key, v]) => (
+                <li key={key}>
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <span className={`h-2 w-2 rounded-full ${SENTIMENT[key].dot}`} />
+                    {SENTIMENT[key].label}
+                  </span>
+                  <span className="mt-0.5 block text-sm font-semibold tabular-nums">
+                    {v}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Topics + live feed */}
+        <div className="grid gap-3 lg:grid-cols-2">
+          <TopicBars />
+          <LiveFeed />
         </div>
       </div>
     </div>
   );
 }
 
+function TopicBars() {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4">
+      <p className="text-sm font-medium">Top concerns</p>
+      <ul className="mt-4 space-y-3.5">
+        {TOPICS.map((t, i) => (
+          <li key={t.label}>
+            <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
+              <span className="truncate text-foreground/85">{t.label}</span>
+              <span className="flex items-center gap-2">
+                <span
+                  className={`font-medium tabular-nums ${
+                    t.change >= 0 ? "text-destructive" : "text-primary"
+                  }`}
+                >
+                  {t.change > 0 ? "+" : ""}
+                  {t.change}
+                </span>
+                <span className="w-8 text-right font-semibold tabular-nums">
+                  {t.share}%
+                </span>
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <motion.div
+                initial={{ width: 0 }}
+                whileInView={{ width: `${(t.share / 31) * 100}%` }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.9, delay: 0.1 * i, ease: "easeOut" }}
+                className={`h-full rounded-full ${i === 1 ? "bg-chart-2" : "bg-primary"}`}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** New comments slide in at the top every few seconds. */
+function LiveFeed() {
+  const reduce = useReducedMotion();
+  const [items, setItems] = useState(() =>
+    [0, 1, 2, 3].map((i) => ({ uid: i, ...FEED[i % FEED.length] })),
+  );
+  const counter = useRef(4);
+
+  useEffect(() => {
+    if (reduce) return;
+    const id = setInterval(() => {
+      const n = counter.current++;
+      setItems((prev) =>
+        [{ uid: n, ...FEED[n % FEED.length] }, ...prev].slice(0, 4),
+      );
+    }, 3200);
+    return () => clearInterval(id);
+  }, [reduce]);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-background p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">Incoming comments</p>
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+          </span>
+          Analyzing
+        </span>
+      </div>
+
+      <ul className="mt-3 space-y-2">
+        <AnimatePresence initial={false} mode="popLayout">
+          {items.map((c) => (
+            <motion.li
+              key={c.uid}
+              layout
+              initial={{ opacity: 0, y: -18, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 380, damping: 32 }}
+              className="rounded-lg border border-border bg-card p-3"
+            >
+              <p className="line-clamp-1 text-[13px] leading-5 text-foreground/90">
+                {c.text}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
+                  {c.lang}
+                </span>
+                <span
+                  className={`rounded-md px-1.5 py-0.5 font-medium ${SENTIMENT[c.sentiment].chip}`}
+                >
+                  {SENTIMENT[c.sentiment].label}
+                </span>
+                <span className="text-muted-foreground">{c.topic}</span>
+              </div>
+            </motion.li>
+          ))}
+        </AnimatePresence>
+      </ul>
+    </div>
+  );
+}
+
 /* =========================================================
-   CAPABILITY STRIP
+   NUMBERS BAND
 ========================================================= */
 
-function CapabilityStrip() {
-  const items = [
-    {
-      title: "3 languages",
-      text: "Amharic, Afaan Oromo and English in one workspace.",
-    },
-    {
-      title: "3 layers of insight",
-      text: "Language, sentiment and topic for every comment.",
-    },
-    {
-      title: "Your team decides",
-      text: "AI organizes feedback. People make the call.",
-    },
-    {
-      title: "Authorized data only",
-      text: "Works with Pages you connect and comments available to you.",
-    },
+function NumbersBand() {
+  const stats = [
+    { to: 128430, label: "Comments analyzed", suffix: "", decimals: 0 },
+    { to: 3, label: "Languages supported", suffix: "", decimals: 0 },
+    { to: 24, label: "Public-service topics detected", suffix: "", decimals: 0 },
+    { to: 58.4, label: "Average positive sentiment", suffix: "%", decimals: 1 },
   ];
 
   return (
-    <section className="px-5 py-14 sm:px-8">
-      <div className="mx-auto grid max-w-6xl gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
-        {items.map((item) => (
-          <div key={item.title} className="bg-card p-6">
-            <p className="text-base font-semibold tracking-tight">
-              {item.title}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {item.text}
-            </p>
-          </div>
-        ))}
+    <section className="px-5 pb-6 sm:px-8">
+      <div className="mx-auto max-w-6xl">
+        <div className="grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+          {stats.map((s) => (
+            <div key={s.label} className="bg-card px-6 py-8">
+              <p className="text-4xl font-semibold tracking-[-0.04em]">
+                <Counter to={s.to} suffix={s.suffix} decimals={s.decimals} />
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">{s.label}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-center text-xs text-muted-foreground">
+          Figures from a sample workspace.
+        </p>
       </div>
     </section>
   );
@@ -857,219 +1177,394 @@ function SectionHeader({
 }
 
 /* =========================================================
-   FEATURE GRID (bento)
+   PRODUCT TABS
 ========================================================= */
 
-function FeatureCard({
-  icon: Icon,
-  title,
-  description,
-  className = "",
-  children,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  className?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div
-      className={`flex flex-col overflow-hidden rounded-3xl border border-border bg-card p-6 sm:p-7 ${className}`}
-    >
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-        <Icon className="h-5 w-5" />
-      </span>
-      <h3 className="mt-5 text-lg font-semibold tracking-tight">{title}</h3>
-      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-        {description}
-      </p>
-      {children && <div className="mt-6 flex-1">{children}</div>}
-    </div>
-  );
-}
+type TabId = "sentiment" | "topics" | "languages";
 
-function FeatureGrid() {
+const TABS: { id: TabId; icon: LucideIcon; title: string; text: string }[] = [
+  {
+    id: "sentiment",
+    icon: PieChart,
+    title: "Sentiment",
+    text: "See how people feel overall and how it changes day to day.",
+  },
+  {
+    id: "topics",
+    icon: Tag,
+    title: "Topics",
+    text: "Find which services people talk about, and where concern is growing.",
+  },
+  {
+    id: "languages",
+    icon: Languages,
+    title: "Languages",
+    text: "Compare volume and mood across Amharic, Afaan Oromo and English.",
+  },
+];
+
+function ProductTabs() {
+  const [tab, setTab] = useState<TabId>("sentiment");
+
   return (
     <section id="product" className="scroll-mt-20 px-5 py-20 sm:px-8 lg:py-28">
       <div className="mx-auto max-w-6xl">
         <SectionHeader
           center
-          title="Everything you need to understand public feedback"
-          description="One workspace that reads comments in the languages your community uses and turns them into patterns your team can review."
+          title="Three views of public opinion"
+          description="Switch between sentiment, topics and languages to see the full picture."
         />
 
-        <div className="mt-14 grid gap-4 lg:grid-cols-3">
-          <FeatureCard
-            className="lg:col-span-2"
-            icon={Globe2}
-            title="Understands the languages your community speaks"
-            description="Comments are identified and analyzed in Amharic, Afaan Oromo and English, with an English translation to help every team member follow along."
+        <div className="mt-14 grid gap-6 lg:grid-cols-[320px_1fr]">
+          <div
+            role="tablist"
+            aria-label="Product views"
+            className="flex gap-3 overflow-x-auto lg:flex-col lg:overflow-visible"
           >
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                { name: "አማርኛ", sub: "Amharic", sample: "በጣም ጥሩ ነው" },
-                { name: "Afaan Oromo", sub: "Oromo", sample: "Galatoomaa" },
-                { name: "English", sub: "English", sample: "Thank you" },
-              ].map((l) => (
-                <div
-                  key={l.sub}
-                  className="rounded-2xl border border-border bg-background p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold">{l.name}</p>
-                    <Check className="h-4 w-4 text-primary" />
-                  </div>
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    {l.sample}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </FeatureCard>
-
-          <FeatureCard
-            icon={Smile}
-            title="Sentiment you can read at a glance"
-            description="See how people feel about each topic, page and time period."
-          >
-            <div className="space-y-4">
-              <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
-                <span className="bg-primary" style={{ width: "58%" }} />
-                <span className="bg-muted-foreground/60" style={{ width: "27%" }} />
-                <span className="bg-destructive" style={{ width: "15%" }} />
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                {(
-                  [
-                    ["positive", "58%"],
-                    ["neutral", "27%"],
-                    ["negative", "15%"],
-                  ] as [Sentiment, string][]
-                ).map(([key, value]) => (
-                  <div key={key}>
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <span
-                        className={`h-2 w-2 rounded-full ${SENTIMENT_META[key].dot}`}
-                      />
-                      {SENTIMENT_META[key].label}
-                    </div>
-                    <p className="mt-1 text-lg font-semibold tabular-nums">
-                      {value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </FeatureCard>
-
-          <FeatureCard
-            icon={Tag}
-            title="Topics found automatically"
-            description="Recurring subjects surface on their own, so you don't need to tag comments by hand."
-          >
-            <div className="flex flex-wrap gap-2">
-              {[
-                "Roads",
-                "Water supply",
-                "Waste collection",
-                "Health services",
-                "Electricity",
-                "Schools",
-                "Public transport",
-              ].map((t, i) => (
-                <span
-                  key={t}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-                    i < 2
-                      ? "border-primary/25 bg-primary/10 text-primary"
-                      : "border-border bg-background text-muted-foreground"
+            {TABS.map((t) => {
+              const Icon = t.icon;
+              const active = t.id === tab;
+              return (
+                <button
+                  key={t.id}
+                  role="tab"
+                  type="button"
+                  aria-selected={active}
+                  onClick={() => setTab(t.id)}
+                  className={`relative min-w-[240px] rounded-2xl border p-5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 lg:min-w-0 ${
+                    active
+                      ? "border-primary/40 bg-card shadow-lg shadow-primary/10"
+                      : "border-border bg-card/50 hover:bg-card"
                   }`}
                 >
-                  {t}
-                </span>
-              ))}
-            </div>
-          </FeatureCard>
-
-          <FeatureCard
-            className="lg:col-span-2"
-            icon={Activity}
-            title="Track how opinion changes over time"
-            description="Follow sentiment day by day to see whether a service improvement is landing or a concern is growing."
-          >
-            <div className="rounded-2xl border border-border bg-background p-4">
-              <TrendChart height={120} />
-            </div>
-          </FeatureCard>
-
-          <FeatureCard
-            icon={Lock}
-            title="Built with privacy in mind"
-            description="Only content from Pages you are authorized to manage is analyzed."
-          >
-            <ul className="space-y-2.5 text-sm text-muted-foreground">
-              {[
-                "Authorized Page access",
-                "Data deletion on request",
-                "No data sold or shared",
-              ].map((t) => (
-                <li key={t} className="flex items-center gap-2.5">
-                  <Check className="h-4 w-4 shrink-0 text-primary" />
-                  {t}
-                </li>
-              ))}
-            </ul>
-          </FeatureCard>
-
-          <FeatureCard
-            className="lg:col-span-2"
-            icon={Bell}
-            title="Know what needs attention first"
-            description="Comments that point to urgent service problems are flagged, so your team starts with what matters most."
-          >
-            <div className="space-y-2.5">
-              {[
-                {
-                  text: "Water outage reported for two weeks",
-                  tag: "High priority",
-                  tone: "bg-destructive/10 text-destructive",
-                },
-                {
-                  text: "Missed waste collection on one street",
-                  tag: "Medium priority",
-                  tone: "bg-muted text-muted-foreground",
-                },
-              ].map((row) => (
-                <div
-                  key={row.text}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-background px-4 py-3"
-                >
-                  <p className="min-w-0 truncate text-sm">{row.text}</p>
-                  <span
-                    className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium ${row.tone}`}
-                  >
-                    {row.tag}
+                  {active && (
+                    <motion.span
+                      layoutId="tab-accent"
+                      className="absolute inset-y-4 left-0 w-1 rounded-r-full bg-primary"
+                    />
+                  )}
+                  <span className="flex items-center gap-3">
+                    <span
+                      className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${
+                        active
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="text-base font-semibold">{t.title}</span>
                   </span>
-                </div>
-              ))}
-            </div>
-          </FeatureCard>
+                  <span className="mt-3 block text-sm leading-6 text-muted-foreground">
+                    {t.text}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="min-h-[430px] overflow-hidden rounded-3xl border border-border bg-card p-5 shadow-xl shadow-foreground/[0.05] sm:p-7">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={tab}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.22 }}
+              >
+                {tab === "sentiment" && <SentimentPanel />}
+                {tab === "topics" && <TopicsPanel />}
+                {tab === "languages" && <LanguagesPanel />}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
+function SentimentPanel() {
+  const [range, setRange] = useState<7 | 30>(30);
+  return (
+    <div className="grid gap-6 md:grid-cols-[180px_1fr] md:items-center">
+      <div>
+        <Donut
+          center="58%"
+          sub="positive"
+          segments={[
+            { label: "Positive", value: 58, stroke: SENTIMENT.positive.stroke },
+            { label: "Neutral", value: 27, stroke: "var(--muted-foreground)" },
+            { label: "Negative", value: 15, stroke: SENTIMENT.negative.stroke },
+          ]}
+        />
+        <ul className="mt-5 space-y-2 text-sm">
+          {(
+            [
+              ["positive", 58],
+              ["neutral", 27],
+              ["negative", 15],
+            ] as [Sentiment, number][]
+          ).map(([k, v]) => (
+            <li key={k} className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <span className={`h-2 w-2 rounded-full ${SENTIMENT[k].dot}`} />
+                {SENTIMENT[k].label}
+              </span>
+              <span className="font-semibold tabular-nums">{v}%</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-sm font-medium">Sentiment trend</p>
+          <div className="inline-flex rounded-lg border border-border bg-muted/60 p-0.5 text-xs font-medium">
+            {([7, 30] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={range === r}
+                onClick={() => setRange(r)}
+                className={`rounded-md px-3 py-1 transition-colors ${
+                  range === r
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {r} days
+              </button>
+            ))}
+          </div>
+        </div>
+        <InteractiveTrend range={range} />
+      </div>
+    </div>
+  );
+}
+
+function TopicsPanel() {
+  return (
+    <div className="grid gap-8 md:grid-cols-[1.2fr_1fr]">
+      <div>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">Negative mentions by day</p>
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            Low
+            <span
+              aria-hidden="true"
+              className="h-2 w-16 rounded-full bg-gradient-to-r from-destructive/10 to-destructive"
+            />
+            High
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-1.5">
+          <div className="grid grid-cols-[110px_repeat(7,1fr)] gap-1.5 text-[10px] text-muted-foreground">
+            <span />
+            {HEAT_DAYS.map((d) => (
+              <span key={d} className="text-center">
+                {d}
+              </span>
+            ))}
+          </div>
+          {TOPICS.map((t, r) => (
+            <div
+              key={t.label}
+              className="grid grid-cols-[110px_repeat(7,1fr)] items-center gap-1.5"
+            >
+              <span className="truncate pr-2 text-xs text-foreground/80">
+                {t.label}
+              </span>
+              {HEAT[r].map((v, c) => (
+                <div
+                  key={c}
+                  title={`${t.label}, ${HEAT_DAYS[c]}: ${Math.round(v * 100)} index`}
+                  className="relative h-8 overflow-hidden rounded-md bg-muted"
+                >
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: v }}
+                    transition={{ duration: 0.5, delay: (r * 7 + c) * 0.015 }}
+                    className="absolute inset-0 bg-destructive"
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Share of conversation</p>
+        <ul className="mt-4 divide-y divide-border">
+          {TOPICS.map((t, i) => (
+            <li
+              key={t.label}
+              className="flex items-center justify-between gap-3 py-3 text-sm"
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
+                  {i + 1}
+                </span>
+                <span className="truncate">{t.label}</span>
+              </span>
+              <span className="flex items-center gap-3 tabular-nums">
+                <span
+                  className={`inline-flex items-center gap-0.5 text-xs font-medium ${
+                    t.change >= 0 ? "text-destructive" : "text-primary"
+                  }`}
+                >
+                  {t.change >= 0 ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {Math.abs(t.change)}
+                </span>
+                <span className="w-9 text-right font-semibold">{t.share}%</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function LanguagesPanel() {
+  return (
+    <div className="grid gap-8 md:grid-cols-[200px_1fr] md:items-center">
+      <div>
+        <Donut
+          center="3"
+          sub="languages"
+          segments={LANGUAGES.map((l, i) => ({
+            label: l.name,
+            value: l.volume,
+            stroke:
+              i === 0
+                ? "var(--primary)"
+                : i === 1
+                  ? "var(--chart-2)"
+                  : "var(--muted-foreground)",
+          }))}
+        />
+        <ul className="mt-5 space-y-2 text-sm">
+          {LANGUAGES.map((l, i) => (
+            <li key={l.name} className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    i === 0
+                      ? "bg-primary"
+                      : i === 1
+                        ? "bg-chart-2"
+                        : "bg-muted-foreground"
+                  }`}
+                />
+                {l.name}
+              </span>
+              <span className="font-semibold tabular-nums">{l.volume}%</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Sentiment by language</p>
+        <div className="mt-5 space-y-6">
+          {LANGUAGES.map((l, i) => (
+            <div key={l.name}>
+              <div className="mb-2 flex items-baseline justify-between">
+                <span className="text-sm font-semibold">{l.native}</span>
+                <span className="text-xs text-muted-foreground">
+                  {l.volume}% of comments
+                </span>
+              </div>
+              <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+                {(
+                  [
+                    ["bg-primary", l.split[0]],
+                    ["bg-muted-foreground/50", l.split[1]],
+                    ["bg-destructive", l.split[2]],
+                  ] as [string, number][]
+                ).map(([cls, w], j) => (
+                  <motion.div
+                    key={j}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${w}%` }}
+                    transition={{ duration: 0.8, delay: i * 0.12 + j * 0.05, ease: "easeOut" }}
+                    className={cls}
+                  />
+                ))}
+              </div>
+              <div className="mt-2 flex gap-4 text-xs text-muted-foreground tabular-nums">
+                <span>{l.split[0]}% positive</span>
+                <span>{l.split[1]}% neutral</span>
+                <span>{l.split[2]}% negative</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* =========================================================
-   LIVE EXAMPLE (interactive)
+   LIVE ANALYSIS (interactive pipeline)
 ========================================================= */
 
-function LiveExample() {
-  const [activeId, setActiveId] = useState(DEMO_SAMPLES[0].id);
-  const sample = DEMO_SAMPLES.find((s) => s.id === activeId) ?? DEMO_SAMPLES[0];
-  const meta = SENTIMENT_META[sample.sentiment];
-  const SentimentIcon = meta.icon;
+function LiveAnalysis() {
+  const samples = FEED.slice(0, 4);
+  const [index, setIndex] = useState(0);
+  const [stage, setStage] = useState(0);
+  const reduce = useReducedMotion();
+  const sample = samples[index];
+
+  useEffect(() => {
+    if (reduce) {
+      setStage(3);
+      return;
+    }
+    setStage(0);
+    const timers = [
+      setTimeout(() => setStage(1), 600),
+      setTimeout(() => setStage(2), 1300),
+      setTimeout(() => setStage(3), 2000),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [index, reduce]);
+
+  const rows: {
+    icon: LucideIcon;
+    label: string;
+    value: string;
+    confidence: number;
+    chip?: string;
+  }[] = [
+    {
+      icon: Globe2,
+      label: "Language",
+      value: sample.lang,
+      confidence: sample.confidence[0],
+    },
+    {
+      icon: Activity,
+      label: "Sentiment",
+      value: SENTIMENT[sample.sentiment].label,
+      confidence: sample.confidence[1],
+      chip: SENTIMENT[sample.sentiment].chip,
+    },
+    {
+      icon: Tag,
+      label: "Topic",
+      value: sample.topic,
+      confidence: sample.confidence[2],
+    },
+  ];
 
   const priorityTone =
     sample.priority === "High"
@@ -1085,77 +1580,94 @@ function LiveExample() {
     >
       <div className="mx-auto max-w-6xl">
         <SectionHeader
-          title="Pick a comment and see how CivicPulse reads it"
-          description="Each comment is identified by language, scored for sentiment, matched to a topic and given a review priority."
+          title="Watch a comment become an insight"
+          description="Pick a comment. CivicPulse reads the language, scores the sentiment and finds the topic in seconds."
         />
 
-        <div className="mt-12 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-          {/* Comment picker */}
-          <div
-            role="tablist"
-            aria-label="Sample comments"
-            className="space-y-3"
-          >
-            {DEMO_SAMPLES.map((s) => {
-              const selected = s.id === activeId;
-              return (
-                <button
-                  key={s.id}
-                  role="tab"
-                  type="button"
-                  aria-selected={selected}
-                  onClick={() => setActiveId(s.id)}
-                  className={`w-full rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
-                    selected
-                      ? "border-primary/40 bg-card shadow-md shadow-primary/10"
-                      : "border-border bg-card/60 hover:bg-card"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="rounded-md bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground">
-                      {s.language}
-                    </span>
-                    {selected && (
-                      <span className="text-xs font-medium text-primary">
-                        Selected
+        <div className="mt-12 grid gap-6 lg:grid-cols-[1fr_1.1fr]">
+          {/* Input */}
+          <div className="space-y-3">
+            <div
+              role="tablist"
+              aria-label="Sample comments"
+              className="space-y-2.5"
+            >
+              {samples.map((s, i) => {
+                const selected = i === index;
+                return (
+                  <button
+                    key={s.text}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setIndex(i)}
+                    className={`relative w-full overflow-hidden rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
+                      selected
+                        ? "border-primary/40 bg-card shadow-md shadow-primary/10"
+                        : "border-border bg-card/60 hover:bg-card"
+                    }`}
+                  >
+                    <span className="flex items-center justify-between">
+                      <span className="rounded-md bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                        {s.lang}
                       </span>
+                      {selected && stage < 3 && (
+                        <span className="text-xs font-medium text-primary">
+                          Analyzing...
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-3 block text-[15px] leading-6">
+                      {s.text}
+                    </span>
+                    {selected && stage < 3 && !reduce && (
+                      <motion.span
+                        aria-hidden="true"
+                        initial={{ x: "-100%" }}
+                        animate={{ x: "100%" }}
+                        transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
+                        className="pointer-events-none absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-primary/10 to-transparent"
+                      />
                     )}
-                  </div>
-                  <p className="mt-3 text-[15px] leading-6 text-foreground/90">
-                    {s.text}
-                  </p>
-                </button>
-              );
-            })}
-            <p className="px-1 pt-1 text-xs leading-5 text-muted-foreground">
-              Sample comments written for demonstration. Translations may need
-              contextual review.
+                  </button>
+                );
+              })}
+            </div>
+            <p className="px-1 text-xs leading-5 text-muted-foreground">
+              Sample comments for demonstration. Scores are example output.
             </p>
           </div>
 
-          {/* Result panel */}
+          {/* Output */}
           <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-foreground/[0.04]">
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <div className="flex items-center gap-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <Brain className="h-4 w-4" />
                 </span>
-                <p className="text-sm font-semibold">Analysis result</p>
+                <p className="text-sm font-semibold">AI analysis</p>
               </div>
-              <Sparkles className="h-4 w-4 text-chart-2" />
+              <div className="flex items-center gap-1.5" aria-hidden="true">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className={`h-1.5 w-8 rounded-full transition-colors duration-300 ${
+                      stage > i ? "bg-primary" : "bg-muted"
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
 
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={sample.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.22 }}
-                className="p-6"
-              >
-                {sample.translation && (
-                  <div className="rounded-2xl bg-muted/70 p-4">
+            <div className="space-y-3 p-6">
+              {sample.translation && (
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={sample.text}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: stage >= 1 ? 1 : 0.3 }}
+                    className="rounded-2xl bg-muted/70 p-4"
+                  >
                     <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                       <Globe2 className="h-3.5 w-3.5" />
                       English translation
@@ -1163,103 +1675,102 @@ function LiveExample() {
                     <p className="mt-2 text-sm leading-6 text-foreground/80">
                       {sample.translation}
                     </p>
-                  </div>
-                )}
+                  </motion.div>
+                </AnimatePresence>
+              )}
 
-                <dl
-                  className={`grid grid-cols-2 gap-3 ${sample.translation ? "mt-4" : ""}`}
+              {rows.map((row, i) => {
+                const Icon = row.icon;
+                const done = stage > i;
+                return (
+                  <div
+                    key={row.label}
+                    className="rounded-2xl border border-border p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Icon className="h-3.5 w-3.5" />
+                        {row.label}
+                      </span>
+                      <AnimatePresence mode="wait" initial={false}>
+                        {done ? (
+                          <motion.span
+                            key={`${sample.text}-${row.label}-done`}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`rounded-md px-2 py-1 text-xs font-semibold ${row.chip ?? "text-foreground"}`}
+                          >
+                            {row.value}
+                          </motion.span>
+                        ) : (
+                          <motion.span
+                            key={`${sample.text}-${row.label}-wait`}
+                            exit={{ opacity: 0 }}
+                            className="h-5 w-24 animate-pulse rounded-md bg-muted"
+                          />
+                        )}
+                      </AnimatePresence>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                        <motion.div
+                          initial={false}
+                          animate={{ width: done ? `${row.confidence}%` : "0%" }}
+                          transition={{ duration: 0.7, ease: "easeOut" }}
+                          className="h-full rounded-full bg-primary"
+                        />
+                      </div>
+                      <span className="w-20 text-right text-xs tabular-nums text-muted-foreground">
+                        {done ? `${row.confidence}% match` : "..."}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <motion.div
+                initial={false}
+                animate={{ opacity: stage >= 3 ? 1 : 0.35 }}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/[0.06] p-4"
+              >
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <Bell className="h-4 w-4 text-primary" />
+                  Review priority
+                </span>
+                <span
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold ${priorityTone}`}
                 >
-                  <div className="rounded-2xl border border-border p-4">
-                    <dt className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Globe2 className="h-3.5 w-3.5" />
-                      Language
-                    </dt>
-                    <dd className="mt-2 text-sm font-semibold">
-                      {sample.language}
-                    </dd>
-                  </div>
-
-                  <div className="rounded-2xl border border-border p-4">
-                    <dt className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <SentimentIcon className="h-3.5 w-3.5" />
-                      Sentiment
-                    </dt>
-                    <dd className="mt-2">
-                      <span
-                        className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${meta.chip}`}
-                      >
-                        {meta.label}
-                      </span>
-                    </dd>
-                  </div>
-
-                  <div className="rounded-2xl border border-border p-4">
-                    <dt className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Tag className="h-3.5 w-3.5" />
-                      Topic
-                    </dt>
-                    <dd className="mt-2 text-sm font-semibold">
-                      {sample.topic}
-                    </dd>
-                  </div>
-
-                  <div className="rounded-2xl border border-border p-4">
-                    <dt className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Bell className="h-3.5 w-3.5" />
-                      Review priority
-                    </dt>
-                    <dd className="mt-2">
-                      <span
-                        className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${priorityTone}`}
-                      >
-                        {sample.priority}
-                      </span>
-                    </dd>
-                  </div>
-                </dl>
-
-                <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/[0.06] p-4">
-                  <p className="text-sm font-semibold">What this means</p>
-                  <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                    {sample.takeaway}
-                  </p>
-                </div>
+                  {stage >= 3 ? sample.priority : "Pending"}
+                </span>
               </motion.div>
-            </AnimatePresence>
+            </div>
           </div>
         </div>
-
-        <p className="mt-6 text-xs text-muted-foreground">
-          AI-assisted analysis supports human judgment. It does not replace it.
-        </p>
       </div>
     </section>
   );
 }
 
 /* =========================================================
-   HOW IT WORKS (a real sequence, so steps are numbered)
+   HOW IT WORKS
 ========================================================= */
 
 function HowItWorks() {
   const steps = [
     {
       icon: Plug,
-      title: "Connect your Facebook Page",
-      description:
-        "Sign in and authorize the Pages you manage. CivicPulse brings in posts and the comments available to you.",
+      title: "Connect your Page",
+      text: "Authorize the Facebook Pages you manage.",
     },
     {
       icon: Brain,
       title: "AI reads every comment",
-      description:
-        "Each comment is identified by language, scored for sentiment and matched to a public-service topic.",
+      text: "Language, sentiment and topic, automatically.",
     },
     {
       icon: Search,
-      title: "Explore and act on insights",
-      description:
-        "Filter by topic, language or time period, review flagged comments, and share what you find with your team.",
+      title: "Explore and act",
+      text: "Filter, review flagged comments and share insights.",
     },
   ];
 
@@ -1268,30 +1779,54 @@ function HowItWorks() {
       <div className="mx-auto max-w-6xl">
         <SectionHeader
           center
-          title="From connected Page to clear insight in three steps"
-          description="No spreadsheets, no manual tagging. Connect once and keep a live view of how your community feels."
+          title="Up and running in three steps"
+          description="Connect once and keep a live view of how your community feels."
         />
 
-        <ol className="relative mt-14 grid gap-6 md:grid-cols-3">
-          <div
+        <ol className="relative mt-14 grid gap-10 md:grid-cols-3 md:gap-6">
+          <svg
             aria-hidden="true"
-            className="absolute left-[16.6%] right-[16.6%] top-7 hidden h-px bg-gradient-to-r from-transparent via-border to-transparent md:block"
-          />
-          {steps.map((step, i) => {
-            const Icon = step.icon;
+            viewBox="0 0 100 2"
+            preserveAspectRatio="none"
+            className="absolute left-[16.6%] right-[16.6%] top-7 hidden h-[2px] w-[66.8%] md:block"
+          >
+            <motion.line
+              x1="0"
+              x2="100"
+              y1="1"
+              y2="1"
+              stroke="var(--primary)"
+              strokeWidth="2"
+              strokeDasharray="4 4"
+              vectorEffect="non-scaling-stroke"
+              initial={{ pathLength: 0 }}
+              whileInView={{ pathLength: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 1.4, ease: "easeInOut" }}
+            />
+          </svg>
+
+          {steps.map((s, i) => {
+            const Icon = s.icon;
             return (
-              <li key={step.title} className="relative text-center md:px-4">
-                <span className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card text-primary shadow-sm">
+              <li key={s.title} className="relative text-center">
+                <motion.span
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  whileInView={{ scale: 1, opacity: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.25, type: "spring", stiffness: 300, damping: 22 }}
+                  className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card text-primary shadow-sm"
+                >
                   <Icon className="h-6 w-6" />
                   <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                     {i + 1}
                   </span>
-                </span>
+                </motion.span>
                 <h3 className="mt-6 text-lg font-semibold tracking-tight">
-                  {step.title}
+                  {s.title}
                 </h3>
-                <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-muted-foreground">
-                  {step.description}
+                <p className="mx-auto mt-2 max-w-[260px] text-sm leading-6 text-muted-foreground">
+                  {s.text}
                 </p>
               </li>
             );
@@ -1303,188 +1838,109 @@ function HowItWorks() {
 }
 
 /* =========================================================
-   USE CASES
+   TRUST + CTA
 ========================================================= */
 
-function UseCases() {
-  const cases = [
+function TrustAndCta() {
+  const reduce = useReducedMotion();
+  const trust: { icon: LucideIcon; title: string; text: string }[] = [
     {
-      icon: Landmark,
-      title: "City and municipal offices",
-      description:
-        "Learn which neighborhoods and services residents talk about most.",
+      icon: UserCheck,
+      title: "People decide",
+      text: "AI organizes feedback. Your team makes the call.",
     },
     {
-      icon: Building2,
-      title: "Service delivery teams",
-      description:
-        "Catch outages and complaints early and route them to the right team.",
+      icon: ShieldCheck,
+      title: "Privacy-conscious",
+      text: "Only content from Pages you are authorized to manage.",
     },
     {
-      icon: Megaphone,
-      title: "Communications and outreach",
-      description:
-        "See which announcements land well and which questions keep coming back.",
-    },
-    {
-      icon: Eye,
-      title: "Policy and research",
-      description:
-        "Study how public opinion shifts across topics, places and languages.",
+      icon: MessageSquareText,
+      title: "Transparent",
+      text: "Translations are shown so reviewers can verify meaning.",
     },
   ];
 
-  return (
-    <section
-      id="use-cases"
-      className="scroll-mt-20 border-t border-border bg-muted/30 px-5 py-20 sm:px-8 lg:py-28"
-    >
-      <div className="mx-auto max-w-6xl">
-        <SectionHeader
-          title="Made for teams that serve the public"
-          description="Whether you run a city office or study civic opinion, CivicPulse helps you hear residents in their own words."
-        />
+  const pulse =
+    "M0 100 H330 L380 100 L420 40 L470 170 L520 20 L565 100 H1200";
 
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {cases.map((c) => {
-            const Icon = c.icon;
+  return (
+    <section id="trust" className="scroll-mt-20 px-5 pb-20 sm:px-8 lg:pb-28">
+      <div className="mx-auto max-w-6xl">
+        <div className="grid gap-4 md:grid-cols-3">
+          {trust.map((t) => {
+            const Icon = t.icon;
             return (
               <div
-                key={c.title}
-                className="group rounded-2xl border border-border bg-card p-6 transition-colors hover:border-primary/40"
+                key={t.title}
+                className="rounded-2xl border border-border bg-card p-6"
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-foreground text-background transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <Icon className="h-5 w-5" />
                 </span>
-                <h3 className="mt-5 text-base font-semibold tracking-tight">
-                  {c.title}
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {c.description}
+                <h3 className="mt-4 text-base font-semibold">{t.title}</h3>
+                <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                  {t.text}
                 </p>
               </div>
             );
           })}
         </div>
-      </div>
-    </section>
-  );
-}
 
-/* =========================================================
-   RESPONSIBLE AI
-========================================================= */
-
-function ResponsibleAI() {
-  const points = [
-    {
-      icon: UserCheck,
-      title: "People stay in charge",
-      text: "Results support human review. Nothing is decided automatically.",
-    },
-    {
-      icon: ShieldCheck,
-      title: "Privacy-conscious by design",
-      text: "Only content from authorized Pages is analyzed.",
-    },
-    {
-      icon: Eye,
-      title: "Clear about its limits",
-      text: "Translations and sentiment can be wrong, so context always matters.",
-    },
-  ];
-
-  return (
-    <section id="trust" className="scroll-mt-20 px-5 py-20 sm:px-8 lg:py-28">
-      <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-16">
-        <div>
-          <SectionHeader
-            title="AI that supports public service, not replaces it"
-            description="Public feedback deserves care. CivicPulse is designed to help your team understand people, and to keep your team responsible for what happens next."
-          />
-          <ul className="mt-8 space-y-3">
-            {[
-              "Works only with Pages you are authorized to manage",
-              "Shows translations so reviewers can verify meaning",
-              "Lets you request data deletion at any time",
-            ].map((t) => (
-              <li key={t} className="flex items-start gap-3 text-sm leading-6">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Check className="h-3 w-3" />
-                </span>
-                <span className="text-foreground/80">{t}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="relative overflow-hidden rounded-3xl bg-foreground p-6 text-background sm:p-8">
+        <div className="relative mt-4 overflow-hidden rounded-[32px] bg-foreground px-6 py-16 text-center text-background sm:px-12 sm:py-24">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/40 blur-3xl"
+            className="pointer-events-none absolute left-1/2 top-0 h-72 w-[40rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/50 blur-[100px]"
           />
-          <div className="relative space-y-6">
-            {points.map((p) => {
-              const Icon = p.icon;
-              return (
-                <div key={p.title} className="flex gap-4">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-background/10 text-chart-2">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h3 className="text-base font-semibold">{p.title}</h3>
-                    <p className="mt-1 text-sm leading-6 text-background/65">
-                      {p.text}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
 
-/* =========================================================
-   FINAL CTA
-========================================================= */
+          {/* Looping pulse line */}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 1200 200"
+            preserveAspectRatio="none"
+            className="pointer-events-none absolute inset-x-0 top-1/2 h-40 w-full -translate-y-1/2 opacity-60"
+          >
+            <path d={pulse} fill="none" stroke="var(--background)" strokeOpacity="0.1" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+            <motion.path
+              d={pulse}
+              fill="none"
+              stroke="var(--chart-2)"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+              initial={{ pathLength: reduce ? 1 : 0, pathOffset: 0 }}
+              animate={reduce ? undefined : { pathLength: [0, 0.35, 0.35], pathOffset: [0, 0.3, 1] }}
+              transition={{ duration: 3.6, repeat: Infinity, ease: "easeInOut" }}
+            />
+          </svg>
 
-function FinalCta() {
-  return (
-    <section className="px-5 pb-20 sm:px-8 lg:pb-28">
-      <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[32px] border border-border bg-foreground px-6 py-16 text-center text-background sm:px-12 sm:py-20">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-0 h-72 w-[40rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/50 blur-[100px]"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-24 right-0 h-56 w-56 rounded-full bg-chart-2/25 blur-[90px]"
-        />
-
-        <div className="relative">
-          <h2 className="mx-auto max-w-2xl text-balance text-3xl font-semibold leading-[1.1] tracking-[-0.035em] sm:text-5xl">
-            Hear your community clearly.
-          </h2>
-          <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-background/70">
-            Connect your Facebook Page and see what citizens are saying about
-            your services today.
-          </p>
-          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link href="/auth/login" className="w-full sm:w-auto">
-              <Button className="group h-12 w-full rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/30 hover:bg-primary/90 sm:w-auto">
-                Connect your page
-                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Button>
-            </Link>
-            <a
-              href="#demo"
-              className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-background/20 px-6 text-sm font-semibold text-background transition-colors hover:bg-background/10 sm:w-auto"
-            >
-              See a live example
-            </a>
+          <div className="relative">
+            <h2 className="mx-auto max-w-2xl text-balance text-3xl font-semibold leading-[1.1] tracking-[-0.035em] sm:text-5xl">
+              Hear your community clearly.
+            </h2>
+            <p className="mx-auto mt-5 max-w-lg text-base leading-7 text-background/70">
+              Connect your Facebook Page and see what citizens are saying
+              today.
+            </p>
+            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Link href="/auth/login" className="w-full sm:w-auto">
+                <Button className="group h-12 w-full rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/30 hover:bg-primary/90 sm:w-auto">
+                  Connect your page
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </Link>
+              <a
+                href="#demo"
+                className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-background/20 px-6 text-sm font-semibold transition-colors hover:bg-background/10 sm:w-auto"
+              >
+                Try live analysis
+              </a>
+            </div>
+            <p className="mt-6 text-xs text-background/50">
+              AI-assisted analysis supports human judgment. It does not replace
+              it.
+            </p>
           </div>
         </div>
       </div>
@@ -1497,66 +1953,45 @@ function FinalCta() {
 ========================================================= */
 
 function SiteFooter() {
-  const columns = [
-    {
-      title: "Product",
-      links: [
-        { href: "#product", label: "Features" },
-        { href: "#demo", label: "Live example" },
-        { href: "#how", label: "How it works" },
-        { href: "#use-cases", label: "Who it's for" },
-      ],
-    },
-    {
-      title: "Trust",
-      links: [
-        { href: "#trust", label: "Responsible AI" },
-        { href: "/privacy-policy", label: "Privacy Policy" },
-        { href: "/terms", label: "Terms of Service" },
-        { href: "/data-deletion", label: "Data Deletion" },
-      ],
-    },
-    {
-      title: "Account",
-      links: [{ href: "/auth/login", label: "Sign in" }],
-    },
-  ];
-
   return (
     <footer className="border-t border-border bg-card">
-      <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
-          <div className="max-w-xs">
-            <BrandMark size={34} />
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              Public voice intelligence for teams that want to understand the
-              people they serve.
-            </p>
-          </div>
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-5 py-10 sm:px-8 md:flex-row md:items-center md:justify-between">
+        <div>
+          <BrandMark />
+          <p className="mt-3 max-w-xs text-sm leading-6 text-muted-foreground">
+            Public voice intelligence for teams that serve people.
+          </p>
+        </div>
 
-          {columns.map((col) => (
-            <nav key={col.title} aria-label={col.title}>
-              <p className="text-sm font-semibold">{col.title}</p>
-              <ul className="mt-4 space-y-3">
-                {col.links.map((link) => (
-                  <li key={link.href + link.label}>
-                    <Link
-                      href={link.href}
-                      className="text-sm text-muted-foreground transition-colors hover:text-primary"
-                    >
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </nav>
+        <nav
+          aria-label="Footer"
+          className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-muted-foreground"
+        >
+          {NAV_LINKS.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              className="transition-colors hover:text-primary"
+            >
+              {l.label}
+            </Link>
           ))}
-        </div>
+          <Link href="/privacy-policy" className="transition-colors hover:text-primary">
+            Privacy Policy
+          </Link>
+          <Link href="/terms" className="transition-colors hover:text-primary">
+            Terms of Service
+          </Link>
+          <Link href="/data-deletion" className="transition-colors hover:text-primary">
+            Data Deletion
+          </Link>
+        </nav>
+      </div>
 
-        <div className="mt-12 flex flex-col gap-2 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} CivicPulse. All rights reserved.</p>
-          <p>AI-assisted analysis supports human judgment.</p>
-        </div>
+      <div className="border-t border-border">
+        <p className="mx-auto max-w-6xl px-5 py-5 text-xs text-muted-foreground sm:px-8">
+          © {new Date().getFullYear()} CivicPulse. All rights reserved.
+        </p>
       </div>
     </footer>
   );
