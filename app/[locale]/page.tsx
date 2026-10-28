@@ -3,31 +3,40 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
+  Activity,
   ArrowRight,
+  Bell,
   BarChart3,
   Brain,
+  Building2,
   Check,
   ChevronRight,
+  Eye,
   Frown,
   Globe2,
+  Landmark,
+  Lock,
   LogIn,
+  Megaphone,
+  Meh,
   Menu,
-  MessageSquare,
   MessageSquareText,
+  Plug,
+  Search,
   ShieldCheck,
+  Smile,
   Sparkles,
   Tag,
   TrendingUp,
-  Waves,
+  UserCheck,
   X,
-  Droplet,
+  type LucideIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import Threads from "@/components/Threads";
-import Image from "next/image";
 
 /* =========================================================
    THEME HELPERS
@@ -57,10 +66,9 @@ function useThemeColor(variable: string, fallback: string) {
       ctx.fillRect(0, 0, 1, 1);
 
       const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-      const hex = `#${[r, g, b]
-        .map((v) => v.toString(16).padStart(2, "0"))
-        .join("")}`;
-      setColor(hex);
+      setColor(
+        `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`,
+      );
     };
 
     resolve();
@@ -78,11 +86,18 @@ function useThemeColor(variable: string, fallback: string) {
 }
 
 /* =========================================================
-   ANIMATIONS
+   MOTION
+   Motion is kept deliberate: one hero entrance, the pulse line
+   drawing itself, and responses to user actions.
 ========================================================= */
 
-const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 20 },
+const heroStagger: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.1 } },
+};
+
+const heroItem: Variants = {
+  hidden: { opacity: 0, y: 16 },
   visible: {
     opacity: 1,
     y: 0,
@@ -90,578 +105,268 @@ const fadeUp: Variants = {
   },
 };
 
-const fadeIn: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { duration: 0.5, ease: "easeOut" },
+/* =========================================================
+   CONTENT
+========================================================= */
+
+const NAV_LINKS = [
+  { href: "#product", label: "Product" },
+  { href: "#demo", label: "Live example" },
+  { href: "#how", label: "How it works" },
+  { href: "#use-cases", label: "Who it's for" },
+  { href: "#trust", label: "Responsible AI" },
+];
+
+type Sentiment = "positive" | "neutral" | "negative";
+
+const SENTIMENT_META: Record<
+  Sentiment,
+  { label: string; icon: LucideIcon; chip: string; dot: string }
+> = {
+  positive: {
+    label: "Positive",
+    icon: Smile,
+    chip: "bg-primary/10 text-primary",
+    dot: "bg-primary",
+  },
+  neutral: {
+    label: "Neutral",
+    icon: Meh,
+    chip: "bg-muted text-muted-foreground",
+    dot: "bg-muted-foreground",
+  },
+  negative: {
+    label: "Negative",
+    icon: Frown,
+    chip: "bg-destructive/10 text-destructive",
+    dot: "bg-destructive",
   },
 };
+
+const DEMO_SAMPLES: {
+  id: string;
+  language: string;
+  code: string;
+  text: string;
+  translation: string | null;
+  sentiment: Sentiment;
+  topic: string;
+  priority: "High" | "Medium" | "Low";
+  takeaway: string;
+}[] = [
+  {
+    id: "or-water",
+    language: "Afaan Oromo",
+    code: "OR",
+    text: "Bishaan naannoo keenya torban lama guutuu hin jiru.",
+    translation: "Our area has had no running water for two weeks.",
+    sentiment: "negative",
+    topic: "Water supply",
+    priority: "High",
+    takeaway:
+      "The commenter reports a two-week water outage. A service team may want to confirm the affected area.",
+  },
+  {
+    id: "am-roads",
+    language: "Amharic",
+    code: "AM",
+    text: "የመንገዱ ስራ በጣም ጥሩ ነው፣ አመሰግናለሁ።",
+    translation: "The road work is very good, thank you.",
+    sentiment: "positive",
+    topic: "Roads and construction",
+    priority: "Low",
+    takeaway:
+      "Residents are expressing appreciation for completed road work. Useful for communications and progress reports.",
+  },
+  {
+    id: "en-waste",
+    language: "English",
+    code: "EN",
+    text: "The waste collection truck has not come to our street this week.",
+    translation: null,
+    sentiment: "negative",
+    topic: "Waste collection",
+    priority: "Medium",
+    takeaway:
+      "A missed collection is reported. Repeated mentions on one street could point to a route problem.",
+  },
+  {
+    id: "en-health",
+    language: "English",
+    code: "EN",
+    text: "When will the new health center open to the public?",
+    translation: null,
+    sentiment: "neutral",
+    topic: "Health services",
+    priority: "Medium",
+    takeaway:
+      "A question about an opening date. A clear public update could answer many similar comments at once.",
+  },
+];
+
+const TREND_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const POSITIVE_TREND = [42, 46, 44, 51, 55, 53, 58];
+const NEGATIVE_TREND = [24, 22, 25, 20, 18, 19, 15];
+
+const TOP_TOPICS = [
+  { label: "Roads and construction", share: 31 },
+  { label: "Water supply", share: 24 },
+  { label: "Waste collection", share: 18 },
+  { label: "Health services", share: 12 },
+];
 
 /* =========================================================
    PAGE
 ========================================================= */
 
 export default function HomePage() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (!mobileMenuOpen) return;
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileMenuOpen(false);
-    };
-
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [mobileMenuOpen]);
-
   return (
-    <main className="min-h-screen overflow-hidden bg-background text-foreground antialiased">
-      {/* NAVIGATION */}
-
-      <header className="fixed inset-x-0 top-0 z-50 px-4 pt-3 sm:pt-4">
-        <div className="mx-auto max-w-6xl">
-          <div className="relative flex h-[62px] items-center justify-between rounded-2xl border border-border bg-card/90 px-3 shadow-sm shadow-foreground/[0.03] backdrop-blur-xl sm:px-5">
-        
-            <Link
-              href="/"
-              aria-label="CivicPulse home"
-              className="flex shrink-0 items-center gap-2.5"
-            >
-                <Image
-                  src="/icons/icon.png"
-                  alt="CivicPulse logo"
-                  width={40}
-                  height={40}
-                  priority
-                  className="h-10 w-10 object-contain"
-                />
-
-              <span className="leading-none">
-                <span className="block text-[15px] font-bold tracking-tight">
-                  CivicPulse
-                </span>
-
-                <span className="mt-1.5 block text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Public voice intelligence
-                </span>
-              </span>
-            </Link>
-
-
-            {/* Desktop navigation */}
-
-            <nav
-              aria-label="Main navigation"
-              className="hidden items-center gap-8 md:flex"
-            >
-              {NAV_LINKS.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  className="text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {link.label}
-                </a>
-              ))}
-            </nav>
-
-            {/* Desktop CTA */}
-
-            <div className="hidden md:block">
-              <Link href="/auth/login">
-                <Button className="group h-10 rounded-xl bg-foreground px-4 text-xs font-semibold text-background shadow-sm transition-all hover:bg-foreground/90">
-                  Sign in
-                  <LogIn className="ml-2 h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                </Button>
-              </Link>
-            </div>
-
-            {/* Mobile menu toggle */}
-
-            <button
-              type="button"
-              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-              aria-expanded={mobileMenuOpen}
-              aria-controls="mobile-navigation"
-              onClick={() => setMobileMenuOpen((open) => !open)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-border text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:hidden"
-            >
-              {mobileMenuOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Menu className="h-5 w-5" />
-              )}
-            </button>
-
-            {/* Mobile navigation */}
-
-            <AnimatePresence>
-              {mobileMenuOpen && (
-                <motion.nav
-                  id="mobile-navigation"
-                  aria-label="Mobile navigation"
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="absolute inset-x-0 top-[calc(100%+8px)] rounded-2xl border border-border bg-card p-3 shadow-xl shadow-foreground/10 md:hidden"
-                >
-                  {NAV_LINKS.map((link) => (
-                    <a
-                      key={link.href}
-                      href={link.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center justify-between rounded-xl px-3 py-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-                    >
-                      {link.label}
-                      <ChevronRight className="h-4 w-4 text-muted-foreground/70" />
-                    </a>
-                  ))}
-
-                  <div className="my-2 border-t border-border" />
-
-                  <Link
-                    href="/auth/login"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-semibold text-background transition hover:bg-foreground/90"
-                  >
-                    Sign in
-                    <LogIn className="h-4 w-4" />
-                  </Link>
-                </motion.nav>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      </header>
-
-      {/* HERO */}
-      <CivicPulseHero />
-
-      {/* ANALYSIS PIPELINE */}
-      <AnalysisPipeline />
-
-      {/* TRUST STRIP */}
-
-      <section
-        id="trust"
-        className="scroll-mt-28 border-y border-border bg-card"
-      >
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-8 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-xl">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
-              Built for public service
-            </p>
-
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Turn citizen feedback into a clearer understanding of public
-              concerns and service priorities.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2.5">
-            <TrustPill icon={<ShieldCheck />} text="Privacy-conscious" />
-            <TrustPill icon={<Globe2 />} text="3 languages" />
-            <TrustPill icon={<Brain />} text="AI-powered analysis" />
-          </div>
-        </div>
-      </section>
-
-      {/* HOW IT WORKS */}
-
-      <section
-        id="how"
-        className="relative scroll-mt-28 overflow-hidden bg-card px-5 py-20 sm:px-8 sm:py-24 lg:py-28"
-      >
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-40 top-20 h-96 w-96 rounded-full bg-primary/[0.06] blur-3xl"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -left-40 bottom-0 h-80 w-80 rounded-full bg-destructive/[0.04] blur-3xl"
-        />
-
-        <div className="relative mx-auto max-w-6xl">
-          <InteractiveWorkflow />
-        </div>
-      </section>
-
-      {/* FOOTER */}
-
-     
-
-{/* FOOTER */}
-
-<footer className="border-t border-border bg-card">
-  <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-    <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-      {/* Brand */}
-      <Link
-        href="/"
-        aria-label="CivicPulse home"
-        className="flex shrink-0 items-center gap-2.5"
-      >
-          <Image
-            src="/icons/icon.png"
-            alt="CivicPulse logo"
-            width={36}
-            height={36}
-            className="h-9 w-9 object-contain"
-          />
-
-        <span className="leading-none">
-          <span className="block text-sm font-bold tracking-tight">
-            CivicPulse
-          </span>
-
-          <span className="mt-1.5 block text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Public voice intelligence
-          </span>
-        </span>
-      </Link>
-
-      {/* Main navigation */}
-      <nav
-        aria-label="Footer navigation"
-        className="flex flex-wrap items-center gap-x-5 gap-y-3 text-xs text-muted-foreground"
-      >
-        {NAV_LINKS.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className="transition-colors hover:text-[#0066FF]"
-          >
-            {link.label}
-          </Link>
-        ))}
-      </nav>
-
-      {/* Legal links */}
-      <nav
-        aria-label="Legal and privacy"
-        className="flex flex-wrap items-center gap-x-4 gap-y-3 text-xs text-muted-foreground"
-      >
-        <Link
-          href="/privacy-policy"
-          className="transition-colors hover:text-[#0066FF]"
-        >
-          Privacy Policy
-        </Link>
-
-        <Link
-          href="/terms"
-          className="transition-colors hover:text-[#0066FF]"
-        >
-          Terms of Service
-        </Link>
-
-        <Link
-          href="/data-deletion"
-          className="transition-colors hover:text-[#0066FF]"
-        >
-          Data Deletion
-        </Link>
-      </nav>
-    </div>
-
-    {/* Footer description and copyright */}
-    <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-xs leading-5 text-muted-foreground">
-        Public-sector intelligence for better understanding.
-      </p>
-
-      <p className="text-xs text-muted-foreground">
-        © {new Date().getFullYear()} CivicPulse. All rights reserved.
-      </p>
-    </div>
-  </div>
-</footer>
-
-
+    <main className="min-h-screen overflow-x-clip bg-background text-foreground antialiased">
+      <SiteHeader />
+      <Hero />
+      <CapabilityStrip />
+      <FeatureGrid />
+      <LiveExample />
+      <HowItWorks />
+      <UseCases />
+      <ResponsibleAI />
+      <FinalCta />
+      <SiteFooter />
     </main>
   );
 }
 
-const NAV_LINKS = [
-  { href: "#product", label: "Product" },
-  { href: "#how", label: "How it works" },
-  { href: "#trust", label: "Responsible AI" },
-];
-
 /* =========================================================
-   INTERACTIVE WORKFLOW
+   HEADER
 ========================================================= */
 
-type Tone = "primary" | "destructive";
-
-const TONE_STYLES: Record<Tone, { box: string; pulse: string }> = {
-  primary: { box: "bg-primary/10 text-primary", pulse: "bg-primary/20" },
-  destructive: {
-    box: "bg-destructive/10 text-destructive",
-    pulse: "bg-destructive/20",
-  },
-};
-
-const WORKFLOW_STEPS: {
-  number: string;
-  title: string;
-  description: string;
-  icon: typeof MessageSquare;
-  tone: Tone;
-  tags: string[];
-}[] = [
-  {
-    number: "01",
-    title: "Connect & collect",
-    description:
-      "Bring authorized Facebook Page posts and available comments into CivicPulse.",
-    icon: MessageSquare,
-    tone: "primary",
-    tags: ["Page posts", "Comments"],
-  },
-  {
-    number: "02",
-    title: "AI analyzes feedback",
-    description:
-      "Identify language, sentiment, and recurring public-service topics.",
-    icon: Brain,
-    tone: "destructive",
-    tags: ["Language", "Sentiment", "Topics"],
-  },
-  {
-    number: "03",
-    title: "Discover insights",
-    description:
-      "Explore feedback patterns to help teams understand community concerns.",
-    icon: BarChart3,
-    tone: "primary",
-    tags: ["Trends", "Service priorities"],
-  },
-];
-
-function InteractiveWorkflow() {
+function BrandMark({ size = 36 }: { size?: number }) {
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="relative overflow-hidden rounded-[32px] border border-border bg-card p-5 sm:p-8 lg:p-10">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-20 top-20 h-64 w-64 rounded-full bg-destructive/10 blur-3xl"
-        />
+    <Link
+      href="/"
+      aria-label="CivicPulse home"
+      className="flex shrink-0 items-center gap-2.5"
+    >
+      <Image
+        src="/icons/icon.png"
+        alt="CivicPulse logo"
+        width={size}
+        height={size}
+        priority
+        style={{ width: size, height: size }}
+        className="object-contain"
+      />
+      <span className="text-[17px] font-semibold tracking-tight">
+        CivicPulse
+      </span>
+    </Link>
+  );
+}
 
-        <div className="relative">
-          <div className="mb-8 flex flex-col gap-3 text-center sm:mb-10">
-            <span className="mx-auto inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/[0.07] px-3 py-1.5 text-xs font-semibold text-primary">
-              <Sparkles className="h-3.5 w-3.5" />
-              The CivicPulse AI pipeline
-            </span>
+function SiteHeader() {
+  const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
-            <h3 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              From public comments to meaningful insights
-            </h3>
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
-            <p className="mx-auto max-w-2xl text-sm leading-6 text-muted-foreground">
-              Every stage transforms public feedback into information that
-              teams can explore and review.
-            </p>
-          </div>
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
-          <div className="grid gap-5 md:grid-cols-[1fr_52px_1fr_52px_1fr] md:items-center">
-            {WORKFLOW_STEPS.map((step, index) => {
-              const StepIcon = step.icon;
-              const tone = TONE_STYLES[step.tone];
+  return (
+    <header
+      className={`fixed inset-x-0 top-0 z-50 border-b transition-colors duration-300 ${
+        scrolled || open
+          ? "border-border bg-background/85 backdrop-blur-xl"
+          : "border-transparent bg-transparent"
+      }`}
+    >
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
+        <BrandMark size={34} />
 
-              return (
-                <div key={step.number} className="contents">
-                  <motion.article
-                    initial={{ opacity: 0, y: 16 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, amount: 0.2 }}
-                    transition={{ duration: 0.5, delay: index * 0.15 }}
-                    className="relative flex h-full flex-col rounded-2xl border border-border bg-card/90 p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-foreground/[0.05] sm:p-6"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="relative flex h-12 w-12">
-                        <span
-                          aria-hidden="true"
-                          style={{ animationDelay: `${index * 0.6}s` }}
-                          className={`absolute inset-0 animate-ping rounded-2xl [animation-duration:2.8s] ${tone.pulse}`}
-                        />
-                        <span
-                          className={`relative flex h-12 w-12 items-center justify-center rounded-2xl ${tone.box}`}
-                        >
-                          <StepIcon className="h-5 w-5" />
-                        </span>
-                      </span>
+        <nav
+          aria-label="Main navigation"
+          className="hidden items-center gap-1 lg:flex"
+        >
+          {NAV_LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
 
-                      <span className="text-xs font-bold tracking-widest text-muted-foreground">
-                        {step.number}
-                      </span>
-                    </div>
-
-                    <h4 className="mt-5 text-lg font-semibold tracking-tight text-foreground">
-                      {step.title}
-                    </h4>
-
-                    <p className="mt-2 flex-1 text-sm leading-6 text-muted-foreground">
-                      {step.description}
-                    </p>
-
-                    {index === 0 && (
-                      <div className="mt-5 space-y-2">
-                        {["Page posts", "Available comments"].map(
-                          (item, itemIndex) => (
-                            <motion.div
-                              key={item}
-                              initial={{ opacity: 0, x: -8 }}
-                              whileInView={{ opacity: 1, x: 0 }}
-                              viewport={{ once: true }}
-                              transition={{ delay: 0.35 + itemIndex * 0.15 }}
-                              className="flex items-center gap-2.5 rounded-xl bg-primary/[0.07] px-3 py-2.5"
-                            >
-                              <MessageSquareText className="h-4 w-4 shrink-0 text-primary" />
-                              <span className="text-xs font-medium text-foreground/70">
-                                {item}
-                              </span>
-                              <Check className="ml-auto h-3.5 w-3.5 text-primary" />
-                            </motion.div>
-                          ),
-                        )}
-                      </div>
-                    )}
-
-                    {index === 1 && (
-                      <div className="mt-5 rounded-xl bg-foreground p-4 text-background">
-                        <div className="flex items-center gap-3">
-                          <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{
-                              duration: 12,
-                              repeat: Infinity,
-                              ease: "linear",
-                            }}
-                            className="flex h-10 w-10 items-center justify-center rounded-xl border border-background/15 bg-background/[0.08]"
-                          >
-                            <Brain className="h-5 w-5 text-primary" />
-                          </motion.div>
-                          <div>
-                            <p className="text-xs font-semibold">
-                              AI processing
-                            </p>
-                            <p className="mt-1 text-[10px] text-background/60">
-                              Multilingual feedback
-                            </p>
-                          </div>
-                          <motion.span
-                            animate={{ opacity: [0.35, 1, 0.35] }}
-                            transition={{ duration: 1.8, repeat: Infinity }}
-                            className="ml-auto h-2 w-2 rounded-full bg-primary"
-                          />
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap gap-1.5">
-                          {step.tags.map((tag, tagIndex) => (
-                            <motion.span
-                              key={tag}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              whileInView={{ opacity: 1, scale: 1 }}
-                              viewport={{ once: true }}
-                              transition={{ delay: 0.4 + tagIndex * 0.12 }}
-                              className="rounded-lg border border-background/10 bg-background/[0.07] px-2 py-1.5 text-[10px] text-background/80"
-                            >
-                              {tag}
-                            </motion.span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {index === 2 && (
-                      <div className="mt-5 rounded-xl bg-primary/[0.06] p-4">
-                        <p className="text-xs font-semibold text-foreground">
-                          Insight categories
-                        </p>
-
-                        {[
-                          { label: "Sentiment patterns", width: "82%" },
-                          { label: "Recurring topics", width: "64%" },
-                        ].map((item, itemIndex) => (
-                          <div key={item.label} className="mt-3">
-                            <p className="mb-1.5 text-[10px] text-muted-foreground">
-                              {item.label}
-                            </p>
-                            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                              <motion.div
-                                initial={{ width: 0 }}
-                                whileInView={{ width: item.width }}
-                                viewport={{ once: true }}
-                                transition={{
-                                  duration: 0.9,
-                                  delay: 0.5 + itemIndex * 0.15,
-                                  ease: "easeOut",
-                                }}
-                                className="h-full rounded-full bg-primary"
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </motion.article>
-
-                  {/* Flow connector */}
-                  {index < WORKFLOW_STEPS.length - 1 && (
-                    <div
-                      aria-hidden="true"
-                      className="relative mx-auto flex h-9 w-full items-center justify-center md:h-12"
-                    >
-                      <div className="absolute inset-x-0 top-1/2 hidden h-px bg-border md:block" />
-                      <div className="absolute inset-y-0 left-1/2 w-px bg-border md:hidden" />
-
-                      <div className="relative flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card shadow-sm">
-                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                        <span className="absolute inset-0 hidden overflow-hidden rounded-full md:block">
-                          <motion.span
-                            animate={{ x: ["-100%", "200%"] }}
-                            transition={{
-                              duration: 1.8,
-                              repeat: Infinity,
-                              delay: index * 0.5,
-                              ease: "linear",
-                            }}
-                            className="absolute left-0 top-0 h-full w-1/2 bg-gradient-to-r from-transparent via-primary/30 to-transparent"
-                          />
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-8 flex justify-center">
-            <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-primary/20 bg-primary/[0.06] px-4 py-2.5 text-xs font-medium text-primary">
-              <Globe2 className="h-4 w-4" />
-              <span>Amharic</span>
-              <span className="text-muted-foreground/50">·</span>
-              <span>Afaan Oromo</span>
-              <span className="text-muted-foreground/50">·</span>
-              <span>English</span>
-            </div>
-          </div>
+        <div className="hidden items-center gap-2 lg:flex">
+          <Link
+            href="/auth/login"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Sign in
+          </Link>
+          <Link href="/auth/login">
+            <Button className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90">
+              Connect your page
+            </Button>
+          </Link>
         </div>
+
+        <button
+          type="button"
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          aria-controls="mobile-navigation"
+          onClick={() => setOpen((v) => !v)}
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 lg:hidden"
+        >
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </div>
 
-      <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">
-        AI-assisted analysis supports human judgment; it does not replace it.
-      </p>
-    </div>
+      <AnimatePresence>
+        {open && (
+          <motion.nav
+            id="mobile-navigation"
+            aria-label="Mobile navigation"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="border-t border-border bg-background px-5 pb-5 pt-3 lg:hidden"
+          >
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={() => setOpen(false)}
+                className="flex items-center justify-between rounded-lg px-3 py-3 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {link.label}
+                <ChevronRight className="h-4 w-4 opacity-60" />
+              </a>
+            ))}
+            <Link
+              href="/auth/login"
+              onClick={() => setOpen(false)}
+              className="mt-3 flex h-11 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground"
+            >
+              Sign in
+              <LogIn className="h-4 w-4" />
+            </Link>
+          </motion.nav>
+        )}
+      </AnimatePresence>
+    </header>
   );
 }
 
@@ -669,16 +374,15 @@ function InteractiveWorkflow() {
    HERO
 ========================================================= */
 
-function CivicPulseHero() {
-  const threadsColor = useThemeColor("--primary", "#3FA88D");
+function Hero() {
+  const threadsColor = useThemeColor("--primary", "#0066FF");
 
   return (
-    <section className="relative isolate overflow-hidden bg-background px-5 pb-20 pt-32 sm:px-8 sm:pb-24 sm:pt-40 lg:px-10 lg:pb-28 lg:pt-44">
-      {/* Animated background */}
-
+    <section className="relative isolate overflow-hidden px-5 pb-8 pt-32 sm:px-8 sm:pt-40 lg:pt-44">
+      {/* Background: threads + faint grid, both fade out toward the bottom */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+        className="pointer-events-none absolute inset-0 -z-10 [mask-image:linear-gradient(to_bottom,black_35%,transparent_95%)]"
       >
         <Threads
           color={threadsColor}
@@ -697,917 +401,1163 @@ function CivicPulseHero() {
           parting={0}
           enableMouseInteraction
           fade={0}
-          opacity={0.45}
+          opacity={0.35}
           seed={0}
         />
       </div>
-
-      {/* Readability overlay */}
-
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-b from-background/10 via-background/15 to-background/75"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-60 [background-image:linear-gradient(to_right,color-mix(in_oklab,var(--foreground)_7%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_oklab,var(--foreground)_7%,transparent)_1px,transparent_1px)] [background-size:64px_64px] [mask-image:radial-gradient(ellipse_70%_55%_at_50%_0%,black,transparent)]"
       />
 
-      <div className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
-        {/* Hero copy */}
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={heroStagger}
+        className="mx-auto flex max-w-3xl flex-col items-center text-center"
+      >
+        <motion.span
+          variants={heroItem}
+          className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 py-1.5 pl-2 pr-3.5 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur"
+        >
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Sparkles className="h-3 w-3" />
+          </span>
+          Sentiment and language insight for Amharic, Afaan Oromo and English
+        </motion.span>
+
+        <motion.h1
+          variants={heroItem}
+          className="mt-7 text-balance text-[40px] font-semibold leading-[1.05] tracking-[-0.045em] sm:text-6xl lg:text-[68px]"
+        >
+          Turn public conversations into decisions you can act on.
+        </motion.h1>
+
+        <motion.p
+          variants={heroItem}
+          className="mt-6 max-w-xl text-pretty text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8"
+        >
+          CivicPulse reads the comments citizens leave on your Facebook Page,
+          then shows you how people feel, what they talk about, and what needs
+          attention first.
+        </motion.p>
 
         <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={{
-            hidden: {},
-            visible: { transition: { staggerChildren: 0.12 } },
-          }}
+          variants={heroItem}
+          className="mt-9 flex w-full flex-col items-center gap-3 sm:w-auto sm:flex-row"
         >
-          <motion.div variants={fadeUp}>
-            <span className="inline-flex items-center gap-2 rounded-full border border-foreground/10 bg-card/75 px-3.5 py-2 text-[11px] font-semibold tracking-wide text-foreground/70 shadow-sm shadow-foreground/[0.02] backdrop-blur-sm sm:text-xs">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-              </span>
-              PUBLIC FEEDBACK INTELLIGENCE
-            </span>
-          </motion.div>
-
-          <motion.h1
-            variants={fadeUp}
-            className="mt-7 max-w-3xl text-[43px] font-semibold leading-[1.06] tracking-[-0.055em] text-foreground sm:text-6xl lg:text-[68px] xl:text-[74px]"
+          <Link href="/auth/login" className="w-full sm:w-auto">
+            <Button className="group h-12 w-full rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:-translate-y-0.5 hover:bg-primary/90 sm:w-auto">
+              Connect your page
+              <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </Button>
+          </Link>
+          <a
+            href="#demo"
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-border bg-card/70 px-6 text-sm font-semibold text-foreground backdrop-blur transition-colors hover:bg-muted sm:w-auto"
           >
-            We listen to{" "}
-            <span className="font-serif font-normal italic text-primary">
-              what
-            </span>
-            <br className="hidden sm:block" /> citizens are saying.
-          </motion.h1>
-
-          <motion.p
-            variants={fadeUp}
-            className="mt-6 max-w-xl text-sm leading-7 text-foreground/65 sm:mt-7 sm:text-base sm:leading-8 lg:text-[17px]"
-          >
-            Understand public feedback at scale. CivicPulse turns available
-            Facebook comments into sentiment, topic, and trend insights
-            across Amharic, Afaan Oromo, and English.
-          </motion.p>
-
-          <motion.div
-            variants={fadeUp}
-            className="mt-8 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:items-center"
-          >
-            <Link href="/auth/login">
-              <Button className="group h-12 w-full rounded-xl bg-foreground px-5 text-sm font-semibold text-background shadow-lg shadow-foreground/10 transition-all hover:-translate-y-0.5 hover:bg-foreground/90 sm:w-auto sm:px-6">
-                Connect your page
-                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Button>
-            </Link>
-
-            <a
-              href="#product"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-foreground/15 bg-card/55 px-5 text-sm font-semibold text-foreground/80 transition-colors hover:border-foreground/25 hover:bg-card/90 sm:px-6"
-            >
-              Explore the platform
-              <ChevronRight className="h-4 w-4" />
-            </a>
-          </motion.div>
-
-          {/* Supported languages */}
-
-          <motion.div
-            variants={fadeUp}
-            className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-foreground/10 pt-5 text-xs text-foreground/55 sm:mt-10"
-          >
-            <span className="font-medium text-foreground/40">
-              MULTILINGUAL ANALYSIS
-            </span>
-
-            <LanguageCheck text="Amharic" />
-            <LanguageCheck text="Afaan Oromo" />
-            <LanguageCheck text="English" />
-          </motion.div>
+            See a live example
+          </a>
         </motion.div>
 
-        {/* Mobile phone preview */}
-
-        <motion.div
-          initial={{ opacity: 0, y: 28, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
-          className="relative mx-auto w-full max-w-[390px] lg:ml-auto lg:mr-0"
+        <motion.ul
+          variants={heroItem}
+          className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground"
         >
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -inset-10 -z-10 rounded-full bg-primary/15 blur-[65px]"
-          />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -bottom-8 left-1/2 -z-10 h-20 w-[72%] -translate-x-1/2 rounded-full bg-foreground/20 blur-2xl"
-          />
-
-          {/* Phone hardware buttons (device mockup, intentionally not themed) */}
-
-          <div
-            aria-hidden="true"
-            className="absolute -left-[3px] top-[122px] z-20 h-12 w-[4px] rounded-l-full bg-[#68717C] shadow-inner"
-          />
-          <div
-            aria-hidden="true"
-            className="absolute -left-[3px] top-[184px] z-20 h-9 w-[4px] rounded-l-full bg-[#68717C] shadow-inner"
-          />
-          <div
-            aria-hidden="true"
-            className="absolute -right-[3px] top-[150px] z-20 h-[58px] w-[4px] rounded-r-full bg-[#68717C] shadow-inner"
-          />
-
-          {/* Phone chassis (device mockup, intentionally not themed) */}
-
-          <div className="relative rounded-[3.35rem] border-[3px] border-[#747C86] bg-gradient-to-br from-[#424A55] via-[#171C24] to-[#353D48] p-[7px] shadow-[0_35px_90px_-28px_rgba(35,43,54,0.55),inset_0_1px_1px_rgba(255,255,255,0.45)]">
-            <div className="rounded-[2.85rem] border border-black/70 bg-[#080B10] p-[5px]">
-              {/* Phone screen */}
-
-              <div className="relative overflow-hidden rounded-[2.55rem] bg-background">
-                {/* Status bar */}
-
-                <div className="relative z-20 flex h-[45px] items-center justify-between bg-background px-6 pt-1">
-                  <span className="text-[11px] font-bold tracking-tight text-foreground">
-                    9:41
-                  </span>
-
-                  <div
-                    aria-hidden="true"
-                    className="absolute left-1/2 top-[8px] h-[25px] w-[88px] -translate-x-1/2 rounded-full bg-black shadow-inner"
-                  >
-                    <span className="absolute right-[13px] top-1/2 h-[5px] w-[5px] -translate-y-1/2 rounded-full bg-[#17202A] ring-1 ring-[#202A35]" />
-                  </div>
-
-                  <div className="flex items-center gap-1.5 text-foreground">
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 18 14"
-                      className="h-[12px] w-[15px]"
-                      fill="currentColor"
-                    >
-                      <rect x="1" y="9" width="2.5" height="4" rx="0.7" />
-                      <rect x="5" y="6.5" width="2.5" height="6.5" rx="0.7" />
-                      <rect x="9" y="3.5" width="2.5" height="9.5" rx="0.7" />
-                      <rect x="13" y="1" width="2.5" height="12" rx="0.7" />
-                    </svg>
-
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 16 14"
-                      className="h-[12px] w-[14px]"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                    >
-                      <path d="M1.5 4.5a10 10 0 0 1 13 0" />
-                      <path d="M4 7.2a6.1 6.1 0 0 1 8 0" />
-                      <path d="M6.5 10a2.4 2.4 0 0 1 3 0" />
-                      <circle cx="8" cy="12" r="0.8" fill="currentColor" stroke="none" />
-                    </svg>
-
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 25 13"
-                      className="h-[12px] w-[23px]"
-                    >
-                      <rect
-                        x="1"
-                        y="1"
-                        width="20"
-                        height="11"
-                        rx="3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.2"
-                      />
-                      <rect x="3" y="3" width="15" height="7" rx="1.5" fill="currentColor" />
-                      <path d="M23 4.5v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                    </svg>
-                  </div>
-                </div>
-
-                {/* Scrollable app viewport */}
-
-                <div className="h-[610px] overflow-y-auto overscroll-contain bg-background px-3 pb-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:h-[650px]">
-                  <HeroInsightCard />
-                </div>
-
-                {/* Home indicator */}
-
-                <div className="absolute inset-x-0 bottom-0 z-20 flex h-[22px] items-center justify-center bg-gradient-to-t from-background via-background/95 to-transparent">
-                  <span
-                    aria-hidden="true"
-                    className="h-[4px] w-[108px] rounded-full bg-foreground/85"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <p className="mt-5 text-center text-[10px] font-medium tracking-wide text-foreground/45">
-            MOBILE DASHBOARD PREVIEW · ILLUSTRATIVE DATA
-          </p>
-        </motion.div>
-      </div>
-
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] h-16 bg-gradient-to-b from-transparent to-background/90"
-      />
-    </section>
-  );
-}
-
-/* =========================================================
-   ANALYSIS PIPELINE
-========================================================= */
-
-const PIPELINE_COMMENT = {
-  original: "Bishaan naannoo keenya torban lama guutuu hin jiru.",
-  translation: "Our area has had no running water for two weeks.",
-};
-
-type StageTone = "primary" | "destructive" | "neutral";
-
-const STAGE_TONE_STYLES: Record<StageTone, string> = {
-  primary: "bg-primary/10 text-primary",
-  destructive: "bg-destructive/10 text-destructive",
-  neutral: "bg-muted text-muted-foreground",
-};
-
-const PIPELINE_STAGES: {
-  key: string;
-  label: string;
-  value: string;
-  icon: typeof Globe2;
-  tone: StageTone;
-}[] = [
-  {
-    key: "language",
-    label: "Language",
-    value: "Afaan Oromo",
-    icon: Globe2,
-    tone: "primary",
-  },
-  {
-    key: "sentiment",
-    label: "Sentiment",
-    value: "Negative",
-    icon: Frown,
-    tone: "destructive",
-  },
-  {
-    key: "topic",
-    label: "Detected topic",
-    value: "Water supply",
-    icon: Tag,
-    tone: "neutral",
-  },
-];
-
-function AnalysisPipeline() {
-  return (
-    <section
-      id="product"
-      className="scroll-mt-28 bg-background px-5 py-20 sm:px-8 sm:py-24 lg:py-28"
-    >
-      <div className="mx-auto max-w-5xl">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.25 }}
-          variants={fadeUp}
-          className="max-w-2xl"
-        >
-          <SectionEyebrow>
-            <Sparkles className="h-3.5 w-3.5" />
-            AI comment analysis
-          </SectionEyebrow>
-
-          <h2 className="mt-5 text-3xl font-semibold leading-tight tracking-[-0.04em] text-foreground sm:text-4xl lg:text-[44px]">
-            Understand the meaning behind every comment.
-          </h2>
-
-          <p className="mt-4 max-w-xl text-sm leading-7 text-muted-foreground sm:text-base">
-            CivicPulse organizes public feedback into language, sentiment, and
-            topic insights your team can review.
-          </p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.2 }}
-          transition={{ duration: 0.45 }}
-          className="mt-10 overflow-hidden rounded-2xl border border-border bg-card shadow-sm sm:mt-12"
-        >
-          {/* Workspace header */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-5 py-4 sm:px-6">
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Brain className="h-4 w-4" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Comment analysis
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Example result
-                </p>
-              </div>
-            </div>
-
-            <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-              Analysis overview
-            </span>
-          </div>
-
-          <div className="grid lg:grid-cols-[1fr_1fr]">
-            {/* Original comment */}
-            <div className="border-b border-border/60 p-5 sm:p-7 lg:border-b-0 lg:border-r">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Original comment
-              </p>
-
-              <blockquote className="mt-4 text-base font-medium leading-7 text-foreground">
-                “{PIPELINE_COMMENT.original}”
-              </blockquote>
-
-              <div className="mt-5 rounded-xl bg-muted/60 p-4">
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <Globe2 className="h-3.5 w-3.5" />
-                  English translation
-                </div>
-                <p className="mt-2 text-sm leading-6 text-foreground/70">
-                  {PIPELINE_COMMENT.translation}
-                </p>
-              </div>
-
-              <p className="mt-4 text-xs leading-5 text-muted-foreground">
-                Sample text for demonstration. Translation may require
-                contextual review.
-              </p>
-            </div>
-
-            {/* Structured AI results */}
-            <div className="p-5 sm:p-7">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Analysis results
-                </p>
-                <Sparkles className="h-4 w-4 text-primary" />
-              </div>
-
-              <div className="mt-4 divide-y divide-border/60">
-                {PIPELINE_STAGES.map((stage, index) => {
-                  const StageIcon = stage.icon;
-                  const toneClass = STAGE_TONE_STYLES[stage.tone];
-
-                  return (
-                    <motion.div
-                      key={stage.key}
-                      initial={{ opacity: 0, x: 8 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.3, delay: index * 0.1 }}
-                      className="flex items-center gap-3 py-4 first:pt-2 last:pb-2"
-                    >
-                      <span
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${toneClass}`}
-                      >
-                        <StageIcon className="h-4 w-4" />
-                      </span>
-
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs text-muted-foreground">
-                          {stage.label}
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-foreground">
-                          {stage.value}
-                        </p>
-                      </div>
-
-                      <span
-                        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${toneClass}`}
-                      >
-                        {stage.key === "sentiment" ? "Detected" : "Identified"}
-                      </span>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Key takeaway */}
-          <div className="border-t border-border/60 bg-muted/50 px-5 py-5 sm:px-7">
-            <div className="flex items-start gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
-                <Droplet className="h-4 w-4" />
-              </span>
-
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Key takeaway
-                </p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  The comment expresses dissatisfaction about water
-                  availability. This may help the relevant service team
-                  identify an issue for further review.
-                </p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        <p className="mt-4 text-center text-xs text-muted-foreground">
-          Illustrative example · AI results support human review and
-          decision-making.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-/* =========================================================
-   HERO INSIGHT DASHBOARD
-========================================================= */
-
-const SENTIMENT_SPLIT = [
-  { label: "Positive", share: 58, bar: "bg-primary" },
-  { label: "Neutral", share: 27, bar: "bg-muted-foreground" },
-  { label: "Negative", share: 15, bar: "bg-destructive" },
-];
-
-const INSIGHT_TOPICS = [
-  { label: "Roads & construction", share: 31 },
-  { label: "Water supply", share: 24 },
-  { label: "Waste collection", share: 18 },
-];
-
-const SAMPLE_COMMENTS = [
-  {
-    text: "የመንገዱ ስራ በጣም ጥሩ ነው፣ አመሰግናለሁ።",
-    language: "AM",
-    sentiment: "positive" as const,
-  },
-  {
-    text: "Bishaan naannoo keenya torban lama guutuu hin jiru.",
-    language: "OR",
-    sentiment: "negative" as const,
-    priority: "HIGH" as const,
-  },
-];
-
-const SENTIMENT_DOT = {
-  positive: "bg-primary",
-  negative: "bg-destructive",
-  neutral: "bg-muted-foreground",
-} as const;
-
-const DASH_CARD =
-  "rounded-[18px] border border-foreground/[0.06] bg-card shadow-sm shadow-foreground/[0.025]";
-
-function HeroInsightCard() {
-  return (
-    <div className="w-full space-y-3 bg-background px-1 pb-4 pt-1">
-      {/* App header */}
-
-      <div className="flex items-center justify-between gap-2 px-1 pb-1">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-foreground text-background shadow-sm">
-            <Waves className="h-4 w-4" />
-          </span>
-
-          <div className="min-w-0">
-            <p className="text-[13px] font-bold tracking-tight text-foreground">
-              CivicPulse
-            </p>
-            <p className="mt-0.5 text-[9px] font-medium text-muted-foreground">
-              PUBLIC VOICE INTELLIGENCE
-            </p>
-          </div>
-        </div>
-
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/[0.08] px-2 py-1 text-[9px] font-semibold text-primary">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-          DEMO
-        </span>
-      </div>
-
-      {/* Page heading */}
-
-      <div className="px-1 pt-1">
-        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-primary">
-          Overview
-        </p>
-        <h3 className="mt-1 text-[21px] font-semibold leading-tight tracking-[-0.04em] text-foreground">
-          Public sentiment
-        </h3>
-        <p className="mt-1 text-[10px] text-muted-foreground">
-          Sample page · Last 7 days
-        </p>
-      </div>
-
-      {/* Main sentiment metric */}
-
-      <div className={`${DASH_CARD} p-4`}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-medium text-muted-foreground">
-              Overall positive sentiment
-            </p>
-
-            <div className="mt-1 flex items-baseline gap-1">
-              <span className="text-[34px] font-semibold leading-none tracking-[-0.05em] text-foreground">
-                58%
-              </span>
-              <span className="text-[9px] font-semibold text-primary">
-                positive
-              </span>
-            </div>
-          </div>
-
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <TrendingUp className="h-4 w-4" />
-          </span>
-        </div>
-
-        <div
-          role="img"
-          aria-label="Illustrative sentiment distribution: 58 percent positive, 27 percent neutral, and 15 percent negative"
-          className="mt-4 flex h-[7px] overflow-hidden rounded-full bg-muted"
-        >
-          {SENTIMENT_SPLIT.map((segment) => (
-            <span
-              key={segment.label}
-              className={segment.bar}
-              style={{ width: `${segment.share}%` }}
-            />
-          ))}
-        </div>
-
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          {SENTIMENT_SPLIT.map((segment) => (
-            <div key={segment.label} className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${segment.bar}`}
-                />
-                <span className="truncate text-[9px] text-muted-foreground">
-                  {segment.label}
-                </span>
-              </div>
-
-              <p className="mt-1 pl-3 text-[12px] font-bold tabular-nums text-foreground">
-                {segment.share}%
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Topic analysis */}
-
-      <div className={`${DASH_CARD} p-4`}>
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-[12px] font-semibold text-foreground">
-              Top concerns
-            </p>
-            <p className="mt-0.5 text-[9px] text-muted-foreground">
-              Frequently discussed topics
-            </p>
-          </div>
-
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <BarChart3 className="h-4 w-4" />
-          </span>
-        </div>
-
-        <div className="mt-4 space-y-4">
-          {INSIGHT_TOPICS.map((topic, index) => (
-            <div key={topic.label}>
-              <div className="mb-1.5 flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-background text-[9px] font-bold text-muted-foreground">
-                    0{index + 1}
-                  </span>
-                  <span className="truncate text-[10px] font-medium text-foreground/80">
-                    {topic.label}
-                  </span>
-                </div>
-
-                <span className="text-[10px] font-bold tabular-nums text-foreground/70">
-                  {topic.share}%
-                </span>
-              </div>
-
-              <div className="ml-7 h-[5px] overflow-hidden rounded-full bg-foreground/[0.06]">
-                <motion.div
-                  initial={{ width: 0 }}
-                  whileInView={{ width: `${topic.share}%` }}
-                  viewport={{ once: true }}
-                  transition={{
-                    duration: 0.8,
-                    delay: 0.12 * index,
-                    ease: "easeOut",
-                  }}
-                  className="h-full rounded-full bg-primary"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Citizen voices */}
-
-      <div className={`${DASH_CARD} p-4`}>
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-[12px] font-semibold text-foreground">
-              Citizen voices
-            </p>
-            <p className="mt-0.5 text-[9px] text-muted-foreground">
-              Example comments from different languages
-            </p>
-          </div>
-
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-            <MessageSquareText className="h-4 w-4" />
-          </span>
-        </div>
-
-        <div className="mt-3 space-y-2.5">
-          {SAMPLE_COMMENTS.map((comment) => (
-            <div
-              key={comment.text}
-              className="flex min-w-0 items-start gap-2 rounded-xl border border-border/60 bg-background/60 p-2.5"
-            >
-              <span
-                aria-hidden="true"
-                className={`mt-1 h-2 w-2 shrink-0 rounded-full ${SENTIMENT_DOT[comment.sentiment]}`}
-              />
-
-              <div className="min-w-0 flex-1">
-                <p className="break-words text-[10px] leading-[1.65] text-foreground/70">
-                  {comment.text}
-                </p>
-
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-[8px] font-bold text-muted-foreground">
-                    {comment.language}
-                  </span>
-
-                  <span
-                    className={`rounded-md px-1.5 py-0.5 text-[8px] font-bold ${
-                      comment.sentiment === "positive"
-                        ? "bg-primary/10 text-primary"
-                        : "bg-destructive/10 text-destructive"
-                    }`}
-                  >
-                    {comment.sentiment.toUpperCase()}
-                  </span>
-
-                  {comment.priority && (
-                    <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[8px] font-bold text-destructive">
-                      {comment.priority} REVIEW
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Language support */}
-
-      <div className={`${DASH_CARD} p-3.5`}>
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Globe2 className="h-4 w-4" />
-          </span>
-
-          <div>
-            <p className="text-[11px] font-semibold text-foreground">
-              Multilingual analysis
-            </p>
-            <p className="mt-0.5 text-[9px] text-muted-foreground">
-              Designed for local public feedback
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {["English", "አማርኛ", "Afaan Oromo"].map((lang) => (
-            <span
-              key={lang}
-              className="rounded-full border border-border px-2 py-1 text-[9px] font-medium text-foreground/70"
-            >
+          {["Amharic", "Afaan Oromo", "English"].map((lang) => (
+            <li key={lang} className="inline-flex items-center gap-2">
+              <Check className="h-4 w-4 text-primary" aria-hidden="true" />
               {lang}
-            </span>
+            </li>
+          ))}
+        </motion.ul>
+      </motion.div>
+
+      {/* Product preview */}
+      <motion.div
+        initial={{ opacity: 0, y: 40 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.9, ease: "easeOut", delay: 0.35 }}
+        className="relative mx-auto mt-16 max-w-5xl sm:mt-20"
+      >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -inset-x-10 -top-10 bottom-0 -z-10 rounded-[48px] bg-primary/15 blur-[90px]"
+        />
+
+        <DashboardPreview />
+
+        {/* Floating context cards (large screens) */}
+        <div className="absolute -left-6 top-28 hidden w-56 rounded-2xl border border-border bg-card p-4 shadow-xl shadow-foreground/10 xl:block">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Globe2 className="h-3.5 w-3.5 text-primary" />
+            Language detected
+          </div>
+          <p className="mt-2 text-sm font-semibold">Afaan Oromo</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Translated for review by your team.
+          </p>
+        </div>
+
+        <div className="absolute -right-6 bottom-32 hidden w-56 rounded-2xl border border-border bg-card p-4 shadow-xl shadow-foreground/10 xl:block">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Bell className="h-3.5 w-3.5 text-destructive" />
+            Flagged for review
+          </div>
+          <p className="mt-2 text-sm font-semibold">Water supply</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Several negative comments from one area.
+          </p>
+        </div>
+
+        <p className="mt-5 text-center text-xs text-muted-foreground">
+          Product preview with illustrative data.
+        </p>
+      </motion.div>
+    </section>
+  );
+}
+
+/* =========================================================
+   TREND CHART (shared by hero preview and features)
+========================================================= */
+
+function smoothPath(points: [number, number][]) {
+  return points.reduce((d, [x, y], i) => {
+    if (i === 0) return `M${x} ${y}`;
+    const [px, py] = points[i - 1];
+    const cx = (px + x) / 2;
+    return `${d} C${cx} ${py}, ${cx} ${y}, ${x} ${y}`;
+  }, "");
+}
+
+function TrendChart({
+  height = 150,
+  showLabels = true,
+}: {
+  height?: number;
+  showLabels?: boolean;
+}) {
+  const w = 420;
+  const h = 150;
+  const max = 70;
+  const toPoints = (values: number[]): [number, number][] =>
+    values.map((v, i) => [(i * w) / (values.length - 1), h - (v / max) * h]);
+
+  const positive = toPoints(POSITIVE_TREND);
+  const negative = toPoints(NEGATIVE_TREND);
+  const positiveLine = smoothPath(positive);
+  const negativeLine = smoothPath(negative);
+
+  return (
+    <div>
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Illustrative seven day trend: positive sentiment rising from 42 to 58 percent while negative sentiment falls from 24 to 15 percent"
+        style={{ height }}
+        className="w-full overflow-visible"
+      >
+        <defs>
+          <linearGradient id="cp-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {[0.25, 0.5, 0.75].map((r) => (
+          <line
+            key={r}
+            x1="0"
+            x2={w}
+            y1={h * r}
+            y2={h * r}
+            stroke="var(--border)"
+            strokeDasharray="3 5"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+
+        <path d={`${positiveLine} L${w} ${h} L0 ${h} Z`} fill="url(#cp-area)" />
+
+        <motion.path
+          d={negativeLine}
+          fill="none"
+          stroke="var(--destructive)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.4, delay: 0.9, ease: "easeInOut" }}
+        />
+        <motion.path
+          d={positiveLine}
+          fill="none"
+          stroke="var(--primary)"
+          strokeWidth="2.75"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.4, delay: 0.7, ease: "easeInOut" }}
+        />
+      </svg>
+
+      {showLabels && (
+        <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+          {TREND_DAYS.map((d) => (
+            <span key={d}>{d}</span>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   DASHBOARD PREVIEW (hero)
+========================================================= */
+
+const SIDEBAR_ITEMS: { icon: LucideIcon; label: string; active?: boolean }[] = [
+  { icon: BarChart3, label: "Overview", active: true },
+  { icon: MessageSquareText, label: "Comments" },
+  { icon: Tag, label: "Topics" },
+  { icon: Activity, label: "Trends" },
+  { icon: Bell, label: "Review queue" },
+];
+
+function DashboardPreview() {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-foreground/10 ring-1 ring-foreground/[0.03]">
+      {/* Window chrome */}
+      <div className="flex items-center gap-3 border-b border-border bg-muted/50 px-4 py-3">
+        <div aria-hidden="true" className="flex gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-foreground/15" />
+          <span className="h-2.5 w-2.5 rounded-full bg-foreground/15" />
+          <span className="h-2.5 w-2.5 rounded-full bg-foreground/15" />
+        </div>
+        <div className="mx-auto flex h-7 w-full max-w-xs items-center justify-center rounded-md border border-border bg-background text-[11px] text-muted-foreground">
+          CivicPulse overview
+        </div>
+        <div className="w-10" aria-hidden="true" />
       </div>
 
-      {/* Responsible AI note */}
+      <div className="grid md:grid-cols-[200px_1fr]">
+        {/* Sidebar */}
+        <aside className="hidden border-r border-border bg-muted/30 p-4 md:block">
+          <div className="flex items-center gap-2 px-2 pb-4">
+            <Image
+              src="/icons/icon.png"
+              alt=""
+              width={24}
+              height={24}
+              className="h-6 w-6 object-contain"
+            />
+            <span className="text-sm font-semibold">CivicPulse</span>
+          </div>
+          <ul className="space-y-1">
+            {SIDEBAR_ITEMS.map(({ icon: Icon, label, active }) => (
+              <li
+                key={label}
+                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium ${
+                  active
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </li>
+            ))}
+          </ul>
+        </aside>
 
-      <div className="flex items-start gap-2.5 rounded-xl border border-primary/15 bg-primary/[0.06] p-3">
-        <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-        <p className="text-[9px] leading-[1.65] text-muted-foreground">
-          AI-generated insights support human review. Results should be
-          interpreted in context and are not a substitute for professional
-          judgment.
-        </p>
+        {/* Main */}
+        <div className="min-w-0 p-4 text-left sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold tracking-tight">
+                Public sentiment
+              </h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Sample page, last 7 days
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              Demo data
+            </span>
+          </div>
+
+          {/* KPIs */}
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              {
+                label: "Comments analyzed",
+                value: "12,480",
+                note: "+8% vs last week",
+                icon: MessageSquareText,
+              },
+              {
+                label: "Positive sentiment",
+                value: "58%",
+                note: "+6 points",
+                icon: TrendingUp,
+              },
+              {
+                label: "Needs review",
+                value: "42",
+                note: "7 high priority",
+                icon: Bell,
+              },
+            ].map(({ label, value, note, icon: Icon }) => (
+              <div
+                key={label}
+                className="rounded-xl border border-border bg-background p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <Icon className="h-4 w-4 text-primary" />
+                </div>
+                <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+                  {value}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{note}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-[1.4fr_1fr]">
+            {/* Trend */}
+            <div className="rounded-xl border border-border bg-background p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">Sentiment trend</p>
+                <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-primary" />
+                    Positive
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-destructive" />
+                    Negative
+                  </span>
+                </div>
+              </div>
+              <div className="mt-4">
+                <TrendChart />
+              </div>
+            </div>
+
+            {/* Topics */}
+            <div className="rounded-xl border border-border bg-background p-4">
+              <p className="text-sm font-medium">Top concerns</p>
+              <ul className="mt-4 space-y-3.5">
+                {TOP_TOPICS.map((topic, i) => (
+                  <li key={topic.label}>
+                    <div className="mb-1.5 flex items-center justify-between text-xs">
+                      <span className="truncate text-foreground/80">
+                        {topic.label}
+                      </span>
+                      <span className="font-medium tabular-nums text-muted-foreground">
+                        {topic.share}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${topic.share * 2.8}%` }}
+                        transition={{
+                          duration: 0.9,
+                          delay: 0.8 + i * 0.1,
+                          ease: "easeOut",
+                        }}
+                        className={`h-full rounded-full ${
+                          i === 1 ? "bg-chart-2" : "bg-primary"
+                        }`}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
 
-      <p className="px-2 pb-2 text-center text-[9px] leading-4 text-muted-foreground">
-        Illustrative dashboard. Values and comments shown here are examples,
-        not live municipal data.
+/* =========================================================
+   CAPABILITY STRIP
+========================================================= */
+
+function CapabilityStrip() {
+  const items = [
+    {
+      title: "3 languages",
+      text: "Amharic, Afaan Oromo and English in one workspace.",
+    },
+    {
+      title: "3 layers of insight",
+      text: "Language, sentiment and topic for every comment.",
+    },
+    {
+      title: "Your team decides",
+      text: "AI organizes feedback. People make the call.",
+    },
+    {
+      title: "Authorized data only",
+      text: "Works with Pages you connect and comments available to you.",
+    },
+  ];
+
+  return (
+    <section className="px-5 py-14 sm:px-8">
+      <div className="mx-auto grid max-w-6xl gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+        {items.map((item) => (
+          <div key={item.title} className="bg-card p-6">
+            <p className="text-base font-semibold tracking-tight">
+              {item.title}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {item.text}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   SECTION HEADER
+========================================================= */
+
+function SectionHeader({
+  title,
+  description,
+  center = false,
+}: {
+  title: string;
+  description: string;
+  center?: boolean;
+}) {
+  return (
+    <div className={center ? "mx-auto max-w-2xl text-center" : "max-w-2xl"}>
+      <h2 className="text-balance text-3xl font-semibold leading-[1.1] tracking-[-0.035em] sm:text-4xl lg:text-[44px]">
+        {title}
+      </h2>
+      <p className="mt-4 text-pretty text-base leading-7 text-muted-foreground">
+        {description}
       </p>
     </div>
   );
 }
 
 /* =========================================================
-   SHARED COMPONENTS
+   FEATURE GRID (bento)
 ========================================================= */
 
-function SectionEyebrow({ children }: { children: ReactNode }) {
+function FeatureCard({
+  icon: Icon,
+  title,
+  description,
+  className = "",
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  className?: string;
+  children?: ReactNode;
+}) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-foreground/10 bg-card px-3.5 py-2 text-[11px] font-semibold tracking-wide text-foreground/65 shadow-sm shadow-foreground/[0.02]">
-      <span className="inline-flex items-center gap-2 text-primary">
-        {children}
+    <div
+      className={`flex flex-col overflow-hidden rounded-3xl border border-border bg-card p-6 sm:p-7 ${className}`}
+    >
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Icon className="h-5 w-5" />
       </span>
-    </span>
+      <h3 className="mt-5 text-lg font-semibold tracking-tight">{title}</h3>
+      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+        {description}
+      </p>
+      {children && <div className="mt-6 flex-1">{children}</div>}
+    </div>
   );
 }
 
-function LanguageCheck({ text }: { text: string }) {
+function FeatureGrid() {
   return (
-    <span className="inline-flex items-center gap-2">
-      <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />
-      {text}
-    </span>
-  );
-}
+    <section id="product" className="scroll-mt-20 px-5 py-20 sm:px-8 lg:py-28">
+      <div className="mx-auto max-w-6xl">
+        <SectionHeader
+          center
+          title="Everything you need to understand public feedback"
+          description="One workspace that reads comments in the languages your community uses and turns them into patterns your team can review."
+        />
 
-function TrustPill({ icon, text }: { icon: ReactNode; text: string }) {
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/60 px-3 py-2 text-xs font-medium text-foreground/70">
-      <span className="text-primary [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
-      {text}
-    </span>
+        <div className="mt-14 grid gap-4 lg:grid-cols-3">
+          <FeatureCard
+            className="lg:col-span-2"
+            icon={Globe2}
+            title="Understands the languages your community speaks"
+            description="Comments are identified and analyzed in Amharic, Afaan Oromo and English, with an English translation to help every team member follow along."
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                { name: "አማርኛ", sub: "Amharic", sample: "በጣም ጥሩ ነው" },
+                { name: "Afaan Oromo", sub: "Oromo", sample: "Galatoomaa" },
+                { name: "English", sub: "English", sample: "Thank you" },
+              ].map((l) => (
+                <div
+                  key={l.sub}
+                  className="rounded-2xl border border-border bg-background p-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold">{l.name}</p>
+                    <Check className="h-4 w-4 text-primary" />
+                  </div>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    {l.sample}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </FeatureCard>
+
+          <FeatureCard
+            icon={Smile}
+            title="Sentiment you can read at a glance"
+            description="See how people feel about each topic, page and time period."
+          >
+            <div className="space-y-4">
+              <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
+                <span className="bg-primary" style={{ width: "58%" }} />
+                <span className="bg-muted-foreground/60" style={{ width: "27%" }} />
+                <span className="bg-destructive" style={{ width: "15%" }} />
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                {(
+                  [
+                    ["positive", "58%"],
+                    ["neutral", "27%"],
+                    ["negative", "15%"],
+                  ] as [Sentiment, string][]
+                ).map(([key, value]) => (
+                  <div key={key}>
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <span
+                        className={`h-2 w-2 rounded-full ${SENTIMENT_META[key].dot}`}
+                      />
+                      {SENTIMENT_META[key].label}
+                    </div>
+                    <p className="mt-1 text-lg font-semibold tabular-nums">
+                      {value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </FeatureCard>
+
+          <FeatureCard
+            icon={Tag}
+            title="Topics found automatically"
+            description="Recurring subjects surface on their own, so you don't need to tag comments by hand."
+          >
+            <div className="flex flex-wrap gap-2">
+              {[
+                "Roads",
+                "Water supply",
+                "Waste collection",
+                "Health services",
+                "Electricity",
+                "Schools",
+                "Public transport",
+              ].map((t, i) => (
+                <span
+                  key={t}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                    i < 2
+                      ? "border-primary/25 bg-primary/10 text-primary"
+                      : "border-border bg-background text-muted-foreground"
+                  }`}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          </FeatureCard>
+
+          <FeatureCard
+            className="lg:col-span-2"
+            icon={Activity}
+            title="Track how opinion changes over time"
+            description="Follow sentiment day by day to see whether a service improvement is landing or a concern is growing."
+          >
+            <div className="rounded-2xl border border-border bg-background p-4">
+              <TrendChart height={120} />
+            </div>
+          </FeatureCard>
+
+          <FeatureCard
+            icon={Lock}
+            title="Built with privacy in mind"
+            description="Only content from Pages you are authorized to manage is analyzed."
+          >
+            <ul className="space-y-2.5 text-sm text-muted-foreground">
+              {[
+                "Authorized Page access",
+                "Data deletion on request",
+                "No data sold or shared",
+              ].map((t) => (
+                <li key={t} className="flex items-center gap-2.5">
+                  <Check className="h-4 w-4 shrink-0 text-primary" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+          </FeatureCard>
+
+          <FeatureCard
+            className="lg:col-span-2"
+            icon={Bell}
+            title="Know what needs attention first"
+            description="Comments that point to urgent service problems are flagged, so your team starts with what matters most."
+          >
+            <div className="space-y-2.5">
+              {[
+                {
+                  text: "Water outage reported for two weeks",
+                  tag: "High priority",
+                  tone: "bg-destructive/10 text-destructive",
+                },
+                {
+                  text: "Missed waste collection on one street",
+                  tag: "Medium priority",
+                  tone: "bg-muted text-muted-foreground",
+                },
+              ].map((row) => (
+                <div
+                  key={row.text}
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-background px-4 py-3"
+                >
+                  <p className="min-w-0 truncate text-sm">{row.text}</p>
+                  <span
+                    className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium ${row.tone}`}
+                  >
+                    {row.tag}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </FeatureCard>
+        </div>
+      </div>
+    </section>
   );
 }
 
 /* =========================================================
-   CARDS (currently unused, themed for future sections)
+   LIVE EXAMPLE (interactive)
 ========================================================= */
 
-const ACCENT_STYLES = {
-  mint: {
-    icon: "bg-primary/10 text-primary",
-    hover: "group-hover:bg-primary group-hover:text-primary-foreground",
-  },
-  slate: {
-    icon: "bg-muted text-foreground/70",
-    hover: "group-hover:bg-foreground group-hover:text-background",
-  },
-  coral: {
-    icon: "bg-destructive/10 text-destructive",
-    hover: "group-hover:bg-destructive group-hover:text-white",
-  },
-} as const;
+function LiveExample() {
+  const [activeId, setActiveId] = useState(DEMO_SAMPLES[0].id);
+  const sample = DEMO_SAMPLES.find((s) => s.id === activeId) ?? DEMO_SAMPLES[0];
+  const meta = SENTIMENT_META[sample.sentiment];
+  const SentimentIcon = meta.icon;
 
-export function FeatureCard({
-  icon,
-  number,
-  title,
-  description,
-  accent,
-}: {
-  icon: ReactNode;
-  number: string;
-  title: string;
-  description: string;
-  accent: keyof typeof ACCENT_STYLES;
-}) {
-  const styles = ACCENT_STYLES[accent];
+  const priorityTone =
+    sample.priority === "High"
+      ? "bg-destructive/10 text-destructive"
+      : sample.priority === "Medium"
+        ? "bg-chart-2/15 text-primary"
+        : "bg-muted text-muted-foreground";
 
   return (
-    <motion.div
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once: true, amount: 0.2 }}
-      variants={fadeUp}
-      className="h-full"
+    <section
+      id="demo"
+      className="scroll-mt-20 border-y border-border bg-muted/30 px-5 py-20 sm:px-8 lg:py-28"
     >
-      <Card className="group relative flex h-full flex-col overflow-hidden rounded-2xl border-border bg-card p-6 shadow-sm shadow-foreground/[0.02] transition-all duration-300 hover:-translate-y-1 hover:border-foreground/20 hover:shadow-xl hover:shadow-foreground/[0.05] sm:p-7">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold tracking-[0.18em] text-muted-foreground">
-            {number}
-          </span>
+      <div className="mx-auto max-w-6xl">
+        <SectionHeader
+          title="Pick a comment and see how CivicPulse reads it"
+          description="Each comment is identified by language, scored for sentiment, matched to a topic and given a review priority."
+        />
 
-          <span
-            className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors duration-300 ${styles.icon} ${styles.hover}`}
+        <div className="mt-12 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          {/* Comment picker */}
+          <div
+            role="tablist"
+            aria-label="Sample comments"
+            className="space-y-3"
           >
-            <span className="[&>svg]:h-5 [&>svg]:w-5">{icon}</span>
-          </span>
-        </div>
-
-        <h3 className="mt-6 text-lg font-semibold tracking-tight text-foreground">
-          {title}
-        </h3>
-
-        <p className="mt-3 flex-1 text-sm leading-7 text-muted-foreground">
-          {description}
-        </p>
-
-        <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground transition-colors group-hover:text-primary">
-          Built for better understanding
-          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
-        </div>
-      </Card>
-    </motion.div>
-  );
-}
-
-export function ProcessCard({
-  number,
-  icon,
-  title,
-  text,
-}: {
-  number: string;
-  icon: ReactNode;
-  title: string;
-  text: string;
-}) {
-  return (
-    <motion.div
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once: true, amount: 0.2 }}
-      variants={fadeUp}
-      className="h-full"
-    >
-      <Card className="group relative h-full rounded-2xl border-border bg-background p-6 transition-all duration-300 hover:border-primary/30 hover:bg-card hover:shadow-lg hover:shadow-foreground/[0.03] sm:p-7">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold tracking-[0.18em] text-muted-foreground">
-            {number}
-          </span>
-
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-foreground text-background transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-            <span className="[&>svg]:h-4 [&>svg]:w-4">{icon}</span>
-          </span>
-        </div>
-
-        <h3 className="mt-7 text-lg font-semibold text-foreground">{title}</h3>
-
-        <p className="mt-3 text-sm leading-7 text-muted-foreground">{text}</p>
-      </Card>
-    </motion.div>
-  );
-}
-
-export function PrivacyCard({
-  icon,
-  title,
-  text,
-}: {
-  icon: ReactNode;
-  title: string;
-  text: string;
-}) {
-  return (
-    <motion.div
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once: true, amount: 0.15 }}
-      variants={fadeIn}
-    >
-      <Card className="group rounded-2xl border-border bg-card p-5 shadow-sm shadow-foreground/[0.02] transition-colors hover:border-primary/25 sm:p-6">
-        <div className="flex items-start gap-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
-            <span className="[&>svg]:h-[18px] [&>svg]:w-[18px]">{icon}</span>
-          </span>
-
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground sm:text-base">
-              {title}
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {text}
+            {DEMO_SAMPLES.map((s) => {
+              const selected = s.id === activeId;
+              return (
+                <button
+                  key={s.id}
+                  role="tab"
+                  type="button"
+                  aria-selected={selected}
+                  onClick={() => setActiveId(s.id)}
+                  className={`w-full rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
+                    selected
+                      ? "border-primary/40 bg-card shadow-md shadow-primary/10"
+                      : "border-border bg-card/60 hover:bg-card"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="rounded-md bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                      {s.language}
+                    </span>
+                    {selected && (
+                      <span className="text-xs font-medium text-primary">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-3 text-[15px] leading-6 text-foreground/90">
+                    {s.text}
+                  </p>
+                </button>
+              );
+            })}
+            <p className="px-1 pt-1 text-xs leading-5 text-muted-foreground">
+              Sample comments written for demonstration. Translations may need
+              contextual review.
             </p>
           </div>
+
+          {/* Result panel */}
+          <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-lg shadow-foreground/[0.04]">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Brain className="h-4 w-4" />
+                </span>
+                <p className="text-sm font-semibold">Analysis result</p>
+              </div>
+              <Sparkles className="h-4 w-4 text-chart-2" />
+            </div>
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={sample.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.22 }}
+                className="p-6"
+              >
+                {sample.translation && (
+                  <div className="rounded-2xl bg-muted/70 p-4">
+                    <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <Globe2 className="h-3.5 w-3.5" />
+                      English translation
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-foreground/80">
+                      {sample.translation}
+                    </p>
+                  </div>
+                )}
+
+                <dl
+                  className={`grid grid-cols-2 gap-3 ${sample.translation ? "mt-4" : ""}`}
+                >
+                  <div className="rounded-2xl border border-border p-4">
+                    <dt className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Globe2 className="h-3.5 w-3.5" />
+                      Language
+                    </dt>
+                    <dd className="mt-2 text-sm font-semibold">
+                      {sample.language}
+                    </dd>
+                  </div>
+
+                  <div className="rounded-2xl border border-border p-4">
+                    <dt className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <SentimentIcon className="h-3.5 w-3.5" />
+                      Sentiment
+                    </dt>
+                    <dd className="mt-2">
+                      <span
+                        className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${meta.chip}`}
+                      >
+                        {meta.label}
+                      </span>
+                    </dd>
+                  </div>
+
+                  <div className="rounded-2xl border border-border p-4">
+                    <dt className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Tag className="h-3.5 w-3.5" />
+                      Topic
+                    </dt>
+                    <dd className="mt-2 text-sm font-semibold">
+                      {sample.topic}
+                    </dd>
+                  </div>
+
+                  <div className="rounded-2xl border border-border p-4">
+                    <dt className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Bell className="h-3.5 w-3.5" />
+                      Review priority
+                    </dt>
+                    <dd className="mt-2">
+                      <span
+                        className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${priorityTone}`}
+                      >
+                        {sample.priority}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/[0.06] p-4">
+                  <p className="text-sm font-semibold">What this means</p>
+                  <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                    {sample.takeaway}
+                  </p>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
-      </Card>
-    </motion.div>
+
+        <p className="mt-6 text-xs text-muted-foreground">
+          AI-assisted analysis supports human judgment. It does not replace it.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   HOW IT WORKS (a real sequence, so steps are numbered)
+========================================================= */
+
+function HowItWorks() {
+  const steps = [
+    {
+      icon: Plug,
+      title: "Connect your Facebook Page",
+      description:
+        "Sign in and authorize the Pages you manage. CivicPulse brings in posts and the comments available to you.",
+    },
+    {
+      icon: Brain,
+      title: "AI reads every comment",
+      description:
+        "Each comment is identified by language, scored for sentiment and matched to a public-service topic.",
+    },
+    {
+      icon: Search,
+      title: "Explore and act on insights",
+      description:
+        "Filter by topic, language or time period, review flagged comments, and share what you find with your team.",
+    },
+  ];
+
+  return (
+    <section id="how" className="scroll-mt-20 px-5 py-20 sm:px-8 lg:py-28">
+      <div className="mx-auto max-w-6xl">
+        <SectionHeader
+          center
+          title="From connected Page to clear insight in three steps"
+          description="No spreadsheets, no manual tagging. Connect once and keep a live view of how your community feels."
+        />
+
+        <ol className="relative mt-14 grid gap-6 md:grid-cols-3">
+          <div
+            aria-hidden="true"
+            className="absolute left-[16.6%] right-[16.6%] top-7 hidden h-px bg-gradient-to-r from-transparent via-border to-transparent md:block"
+          />
+          {steps.map((step, i) => {
+            const Icon = step.icon;
+            return (
+              <li key={step.title} className="relative text-center md:px-4">
+                <span className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card text-primary shadow-sm">
+                  <Icon className="h-6 w-6" />
+                  <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                    {i + 1}
+                  </span>
+                </span>
+                <h3 className="mt-6 text-lg font-semibold tracking-tight">
+                  {step.title}
+                </h3>
+                <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-muted-foreground">
+                  {step.description}
+                </p>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   USE CASES
+========================================================= */
+
+function UseCases() {
+  const cases = [
+    {
+      icon: Landmark,
+      title: "City and municipal offices",
+      description:
+        "Learn which neighborhoods and services residents talk about most.",
+    },
+    {
+      icon: Building2,
+      title: "Service delivery teams",
+      description:
+        "Catch outages and complaints early and route them to the right team.",
+    },
+    {
+      icon: Megaphone,
+      title: "Communications and outreach",
+      description:
+        "See which announcements land well and which questions keep coming back.",
+    },
+    {
+      icon: Eye,
+      title: "Policy and research",
+      description:
+        "Study how public opinion shifts across topics, places and languages.",
+    },
+  ];
+
+  return (
+    <section
+      id="use-cases"
+      className="scroll-mt-20 border-t border-border bg-muted/30 px-5 py-20 sm:px-8 lg:py-28"
+    >
+      <div className="mx-auto max-w-6xl">
+        <SectionHeader
+          title="Made for teams that serve the public"
+          description="Whether you run a city office or study civic opinion, CivicPulse helps you hear residents in their own words."
+        />
+
+        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {cases.map((c) => {
+            const Icon = c.icon;
+            return (
+              <div
+                key={c.title}
+                className="group rounded-2xl border border-border bg-card p-6 transition-colors hover:border-primary/40"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-foreground text-background transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <h3 className="mt-5 text-base font-semibold tracking-tight">
+                  {c.title}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {c.description}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   RESPONSIBLE AI
+========================================================= */
+
+function ResponsibleAI() {
+  const points = [
+    {
+      icon: UserCheck,
+      title: "People stay in charge",
+      text: "Results support human review. Nothing is decided automatically.",
+    },
+    {
+      icon: ShieldCheck,
+      title: "Privacy-conscious by design",
+      text: "Only content from authorized Pages is analyzed.",
+    },
+    {
+      icon: Eye,
+      title: "Clear about its limits",
+      text: "Translations and sentiment can be wrong, so context always matters.",
+    },
+  ];
+
+  return (
+    <section id="trust" className="scroll-mt-20 px-5 py-20 sm:px-8 lg:py-28">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-16">
+        <div>
+          <SectionHeader
+            title="AI that supports public service, not replaces it"
+            description="Public feedback deserves care. CivicPulse is designed to help your team understand people, and to keep your team responsible for what happens next."
+          />
+          <ul className="mt-8 space-y-3">
+            {[
+              "Works only with Pages you are authorized to manage",
+              "Shows translations so reviewers can verify meaning",
+              "Lets you request data deletion at any time",
+            ].map((t) => (
+              <li key={t} className="flex items-start gap-3 text-sm leading-6">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Check className="h-3 w-3" />
+                </span>
+                <span className="text-foreground/80">{t}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="relative overflow-hidden rounded-3xl bg-foreground p-6 text-background sm:p-8">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-primary/40 blur-3xl"
+          />
+          <div className="relative space-y-6">
+            {points.map((p) => {
+              const Icon = p.icon;
+              return (
+                <div key={p.title} className="flex gap-4">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-background/10 text-chart-2">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-semibold">{p.title}</h3>
+                    <p className="mt-1 text-sm leading-6 text-background/65">
+                      {p.text}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   FINAL CTA
+========================================================= */
+
+function FinalCta() {
+  return (
+    <section className="px-5 pb-20 sm:px-8 lg:pb-28">
+      <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[32px] border border-border bg-foreground px-6 py-16 text-center text-background sm:px-12 sm:py-20">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-0 h-72 w-[40rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/50 blur-[100px]"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-24 right-0 h-56 w-56 rounded-full bg-chart-2/25 blur-[90px]"
+        />
+
+        <div className="relative">
+          <h2 className="mx-auto max-w-2xl text-balance text-3xl font-semibold leading-[1.1] tracking-[-0.035em] sm:text-5xl">
+            Hear your community clearly.
+          </h2>
+          <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-background/70">
+            Connect your Facebook Page and see what citizens are saying about
+            your services today.
+          </p>
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link href="/auth/login" className="w-full sm:w-auto">
+              <Button className="group h-12 w-full rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/30 hover:bg-primary/90 sm:w-auto">
+                Connect your page
+                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </Button>
+            </Link>
+            <a
+              href="#demo"
+              className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-background/20 px-6 text-sm font-semibold text-background transition-colors hover:bg-background/10 sm:w-auto"
+            >
+              See a live example
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   FOOTER
+========================================================= */
+
+function SiteFooter() {
+  const columns = [
+    {
+      title: "Product",
+      links: [
+        { href: "#product", label: "Features" },
+        { href: "#demo", label: "Live example" },
+        { href: "#how", label: "How it works" },
+        { href: "#use-cases", label: "Who it's for" },
+      ],
+    },
+    {
+      title: "Trust",
+      links: [
+        { href: "#trust", label: "Responsible AI" },
+        { href: "/privacy-policy", label: "Privacy Policy" },
+        { href: "/terms", label: "Terms of Service" },
+        { href: "/data-deletion", label: "Data Deletion" },
+      ],
+    },
+    {
+      title: "Account",
+      links: [{ href: "/auth/login", label: "Sign in" }],
+    },
+  ];
+
+  return (
+    <footer className="border-t border-border bg-card">
+      <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+          <div className="max-w-xs">
+            <BrandMark size={34} />
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              Public voice intelligence for teams that want to understand the
+              people they serve.
+            </p>
+          </div>
+
+          {columns.map((col) => (
+            <nav key={col.title} aria-label={col.title}>
+              <p className="text-sm font-semibold">{col.title}</p>
+              <ul className="mt-4 space-y-3">
+                {col.links.map((link) => (
+                  <li key={link.href + link.label}>
+                    <Link
+                      href={link.href}
+                      className="text-sm text-muted-foreground transition-colors hover:text-primary"
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
+        </div>
+
+        <div className="mt-12 flex flex-col gap-2 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} CivicPulse. All rights reserved.</p>
+          <p>AI-assisted analysis supports human judgment.</p>
+        </div>
+      </div>
+    </footer>
   );
 }
