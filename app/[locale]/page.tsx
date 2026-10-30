@@ -151,6 +151,7 @@ const NAV_LINKS = [
   { href: "#product", label: "Product" },
   { href: "#how", label: "How it works" },
   { href: "#trust", label: "Responsible AI" },
+  
 ];
 
 /* =========================================================
@@ -192,7 +193,7 @@ export default function HomePage() {
    HEADER
 ========================================================= */
 
-function BrandMark({ size = 34 }: { size?: number }) {
+export function BrandMark({ size = 34 }: { size?: number }) {
   return (
     <Link
       href="/"
